@@ -1,0 +1,51 @@
+# Data & checkpoints (large files, download separately)
+checkpoints/
+Dataset/
+data/
+outputs/
+results/
+wandb/
+
+# Archives & incomplete downloads
+*.zip
+*.crdownload
+*.tar.gz
+*.7z
+
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.eggs/
+dist/
+build/
+*.egg
+.Python
+venv/
+.venv/
+env/
+.env
+
+# Jupyter
+.ipynb_checkpoints/
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# Logs
+*.log
+tensorboard/
+
+# Model weights
+*.bin
+*.safetensors
+*.pt
+*.pth
