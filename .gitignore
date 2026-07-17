@@ -49,3 +49,6 @@ tensorboard/
 *.safetensors
 *.pt
 *.pth
+
+# Local-only duplicates (content migrated to mixup/patches/)
+前期实验备份/

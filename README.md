@@ -11,6 +11,7 @@ Windows 本机原生 DeepSpeed 训练流程不稳定，**不作为正式训练�
 - 优化方法论：`doc/基于Video-R1的视频交通异常行为检测项目中的GRPO优化调研报告.pdf`
 - 前期 CPPO 验证：Colab + Drive，50 条子集复现（加速约 0.7%，reward 与 baseline 一致）
 - GitHub：https://github.com/SanXue-YG/MixUpLLaVA-Video-R1
+- Google Drive 共享包（供参考）：[MixUpLLaVA-video-r1](https://drive.google.com/drive/folders/1Qjh19WSLGIeu1NX-UYRYAh4oyFQjCp2m?usp=sharing)（含 `repo` / `data` / `checkpoints` / `outputs`）
 
 ## MixUp 优化思路
 
@@ -25,12 +26,15 @@ Windows 本机原生 DeepSpeed 训练流程不稳定，**不作为正式训练�
 
 ## 项目状态
 
-🚧 **开发中** — Phase 0（环境与仓库）已切回 **Colab + Google Drive**。
+🚧 **开发中** — Phase 0（Drive + GitHub 对齐）进行中。
 
 - [x] 项目目录与文档（GitHub 骨架）
-- [x] 实验计划表（对齐 Drive 成功路径）
-- [ ] Drive 目录规范化 + 上游代码挂载说明
-- [ ] Colab 基线 / CPPO（g8）对比跑通
+- [x] 实验计划表（对齐 Drive 成功路径 + 共享链接）
+- [x] `doc/` 调研报告与 CPPO 论文
+- [x] `notebooks/` Colab 入口
+- [x] `mixup/` CPPO 模块与 trainer patches
+- [ ] Drive 上确认四目录 + clone 本仓库（见 `docs/PHASE0_DRIVE_SYNC.md`）
+- [ ] Colab 基线 / CPPO（g8）对比跑通（Phase 1）
 - [ ] MixUp 模块实现与消融
 - [ ] 全量训练与评估
 
@@ -38,60 +42,74 @@ Windows 本机原生 DeepSpeed 训练流程不稳定，**不作为正式训练�
 
 ## Google Drive 目录结构（复现必读）
 
-本项目沿用已验证可跑通的 Drive 布局。他人复现时，请在 Google Drive 下创建同名根目录，并按下列结构放置资产。
+### 共享资源包（推荐直接使用）
+
+实验资产（代码副本、数据、权重、训练输出）已整理到共享文件夹，可直接「添加到云端硬盘」后在 Colab 中挂载使用：
+
+| 项 | 内容 |
+|----|------|
+| **共享链接** | [MixUpLLaVA-video-r1（Google Drive）](https://drive.google.com/drive/folders/1Qjh19WSLGIeu1NX-UYRYAh4oyFQjCp2m?usp=sharing) |
+| 文件夹名 | `MixUpLLaVA-video-r1` |
+| 顶层目录（与共享页一致） | `repo/` · `data/` · `checkpoints/` · `outputs/` |
+
+**他人复现最短路径：**
+
+1. 打开上方共享链接 → 右键 / 菜单选择 **「添加到云端硬盘」**（或「建立快捷方式」到「我的云端硬盘」）。
+2. 打开 Colab → `drive.mount('/content/drive')`。
+3. 确认路径为 `/content/drive/MyDrive/MixUpLLaVA-video-r1`（若快捷方式落在子目录，请相应修改 `PROJECT_DIR`）。
+4. 按下方目录树核对四个顶层文件夹齐全后，再跑 Notebook / 训练。
+
+> 注意：共享夹体积较大（含视频与模型权重）。仅浏览结构可打开链接；完整训练请确保自己的 Drive 有足够空间，并遵守数据/权重的使用许可。
 
 ### 根目录约定
 
 | 项 | 值 |
 |----|-----|
-| Drive 根目录名 | `tiny-video-r1-GRPO` |
-| Colab 挂载后路径 | `/content/drive/MyDrive/tiny-video-r1-GRPO` |
-| Notebook 变量 | `PROJECT_DIR = "/content/drive/MyDrive/tiny-video-r1-GRPO"` |
+| Drive 根目录名 | `MixUpLLaVA-video-r1` |
+| Colab 挂载后路径 | `/content/drive/MyDrive/MixUpLLaVA-video-r1` |
+| Notebook 变量 | `PROJECT_DIR = "/content/drive/MyDrive/MixUpLLaVA-video-r1"` |
+| 官方共享包 | https://drive.google.com/drive/folders/1Qjh19WSLGIeu1NX-UYRYAh4oyFQjCp2m?usp=sharing |
 
-> 若你使用不同文件夹名，只需全局替换 `PROJECT_DIR`；**子目录相对结构请保持不变**。
+> **命名说明**：早期实验曾使用 `tiny-video-r1-GRPO`，已统一更名为 `MixUpLLaVA-video-r1`。若你仍保留旧文件夹，请重命名或全局替换 `PROJECT_DIR`。  
+> 子目录相对结构请保持不变。
 
-### 推荐完整结构
+### 当前 Drive 完整结构（与共享夹对齐）
+
+共享根目录下现有四个一级文件夹：`checkpoints`、`data`、`outputs`、`repo`。推荐/实际布局如下：
 
 ```
-MyDrive/
-└── tiny-video-r1-GRPO/                    # PROJECT_DIR
-    ├── repo/                              # 可训练代码（DeepSpeed 入口在此）
-    │   ├── TinyLLaVA-Video-R1/            # 上游基线（正式训练用）
-    │   │   ├── tinyllava/
-    │   │   │   └── train/
-    │   │   │       ├── train.py
-    │   │   │       └── tinyllava_trainer_reason.py
-    │   │   ├── scripts/
-    │   │   │   └── zero3_offload.json     # 训练时可由 Notebook 生成
-    │   │   ├── pyproject.toml / setup.py
-    │   │   └── ...
-    │   ├── TinyLLaVA-Video-R1-CPPO/       # （可选）CPPO 对照副本，只读参考
-    │   └── MixUpLLaVA-Video-R1/           # （推荐）本仓库 clone，放文档/mixup/notebooks
-    │       ├── README.md
-    │       ├── schedule.md
-    │       ├── mixup/                     # 策略模块（开发中）
-    │       ├── notebooks/                 # Colab 实验 Notebook
-    │       └── doc/                       # 调研报告 PDF 等
-    │
-    ├── data/
-    │   └── dataset/                       # DATA_ROOT / DATA_ROOT_STRIP
-    │       ├── NextQA/                    # 视频文件（按上游 README 组织）
-    │       ├── nextqa_0-30s.jsonl         # 全量标注（约 5496 条）
-    │       ├── nextqa_0-30s_10p_seed42.jsonl   # （可选）10% 子集
-    │       └── nextqa_small50.jsonl       # 冒烟 / 最小实验（Notebook 可自动生成）
-    │
-    ├── checkpoints/
-    │   └── coldstart/                     # CKPT：Cold-Start 权重目录
-    │       ├── config.json
-    │       ├── model*.safetensors / *.bin
-    │       └── ...
-    │
-    └── outputs/                           # OUT_BASE：训练日志与 trainer_state.json
-        ├── grpo_A_baseline_small/         # v1 基线（历史）
-        ├── grpo_CPPO_small/               # v1 CPPO（历史）
-        ├── grpo_A_g8/                     # v2：g8 GRPO 基线
-        ├── grpo_CPPO_g8_p50/              # v2：CPPO pruning=0.5
-        └── grpo_CPPO_g8_p75/              # v2：CPPO pruning=0.75（可选）
+MixUpLLaVA-video-r1/                       # 共享根 / PROJECT_DIR
+├── repo/                                  # 可训练代码（DeepSpeed 入口）
+│   ├── TinyLLaVA-Video-R1/                # 上游基线（正式训练用）
+│   │   ├── tinyllava/train/
+│   │   │   ├── train.py
+│   │   │   └── tinyllava_trainer_reason.py
+│   │   ├── scripts/zero3_offload.json     # 可由 Notebook 生成
+│   │   └── ...
+│   ├── TinyLLaVA-Video-R1-CPPO/           # （可选）CPPO 对照副本
+│   └── MixUpLLaVA-Video-R1/               # （推荐）本 GitHub 仓库同步副本
+│       ├── README.md / schedule.md
+│       ├── mixup/                         # 策略模块（开发中）
+│       ├── notebooks/
+│       └── doc/
+│
+├── data/
+│   └── dataset/                           # DATA_ROOT
+│       ├── NextQA/                        # 视频文件
+│       ├── nextqa_0-30s.jsonl             # 全量标注
+│       ├── nextqa_0-30s_10p_seed42.jsonl  # （可选）10% 子集
+│       └── nextqa_small50.jsonl           # 冒烟 / 最小实验
+│
+├── checkpoints/
+│   └── coldstart/                         # Cold-Start 权重（CKPT）
+│
+└── outputs/                               # 训练日志与 trainer_state.json
+    ├── grpo_A_baseline_small/             # v1 基线（历史）
+    ├── grpo_B_optimized_small/            # v1 策略 B（历史）
+    ├── grpo_CPPO_small/                   # v1 CPPO（历史）
+    ├── grpo_A_g8/                         # v2：g8 GRPO（规划/进行中）
+    ├── grpo_CPPO_g8_p50/
+    └── grpo_CPPO_g8_p75/
 ```
 
 ### Notebook 中的路径变量对照
@@ -99,7 +117,7 @@ MyDrive/
 与已跑通 Colab Notebook 一致，建议固定如下：
 
 ```python
-PROJECT_DIR = "/content/drive/MyDrive/tiny-video-r1-GRPO"
+PROJECT_DIR = "/content/drive/MyDrive/MixUpLLaVA-video-r1"
 REPO       = f"{PROJECT_DIR}/repo/TinyLLaVA-Video-R1"
 DATA_ROOT  = f"{PROJECT_DIR}/data/dataset/"          # 注意末尾 /
 CKPT       = f"{PROJECT_DIR}/checkpoints/coldstart"
@@ -125,14 +143,18 @@ SMALL_JSONL = f"{PROJECT_DIR}/data/dataset/nextqa_small50.jsonl"
 
 数据与权重**不进入本 Git 仓库**（见 `.gitignore`），仅通过 Drive 在 Colab 间共享。
 
-### 他人从零重建 Drive（最短步骤）
+### 他人获取数据的两种方式
 
-1. 在 Google Drive 创建 `tiny-video-r1-GRPO/{repo,data/dataset,checkpoints/coldstart,outputs}`。
+**方式 A（推荐）**：使用 [共享文件夹](https://drive.google.com/drive/folders/1Qjh19WSLGIeu1NX-UYRYAh4oyFQjCp2m?usp=sharing)「添加到云端硬盘」，直接得到 `repo/`、`data/`、`checkpoints/`、`outputs/`。
+
+**方式 B（自建）**：
+
+1. 在 Google Drive 创建 `MixUpLLaVA-video-r1/{repo,data/dataset,checkpoints/coldstart,outputs}`。
 2. 将上游 [TinyLLaVA-Video-R1](https://github.com/ZhangXJ199/TinyLLaVA-Video-R1) clone / 解压到 `repo/TinyLLaVA-Video-R1`。
-3. 将本仓库 clone 到 `repo/MixUpLLaVA-Video-R1`（或本地改完后推送，再在 Colab 拉取）。
-4. 按上游 README 准备 NextQA 数据与 `nextqa_0-30s.jsonl`，放入 `data/dataset/`。
-5. 下载 / 自训 Cold-Start 权重到 `checkpoints/coldstart/`。
-6. 打开 Colab → 挂载 Drive → 运行仓库内 Notebook（见 `notebooks/` 或实验目录说明）→ 按 `schedule.md` 执行。
+3. 将本仓库 clone 到 `repo/MixUpLLaVA-Video-R1`。
+4. 按上游 README 准备 NextQA 与 `nextqa_0-30s.jsonl` → `data/dataset/`。
+5. 下载 / 自训 Cold-Start 权重 → `checkpoints/coldstart/`。
+6. Colab 挂载 Drive → 运行 Notebook → 按 `schedule.md` 执行。
 
 ---
 
@@ -154,17 +176,21 @@ SMALL_JSONL = f"{PROJECT_DIR}/data/dataset/nextqa_small50.jsonl"
 
 已验证参考配置（2026-07）：Python 3.12 + PyTorch 2.11+cu128 + A100-80GB。
 
-## GitHub 仓库目录（规划）
+## GitHub 仓库目录
 
 ```
 MixUpLLaVA-Video-R1/
-├── README.md                 # 本文件（含 Drive 复现结构）
-├── schedule.md               # 实验与里程碑计划
-├── doc/                      # 调研报告与论文 PDF
-├── mixup/                    # 混合优化策略模块（待建）
+├── README.md
+├── schedule.md
+├── doc/                      # 调研报告 + CPPO 论文 PDF
 ├── notebooks/                # Colab 实验 Notebook
-├── configs/                  # 显存档位与实验配置（待建）
-├── docs/                     # 实验记录与消融报告（待建）
+├── mixup/                    # 策略模块
+│   ├── cppo.py
+│   ├── registry.py
+│   ├── project_baseline.py
+│   └── patches/              # trainer 参考副本与应用说明
+├── docs/                     # Phase 清单与实验记录
+│   └── PHASE0_DRIVE_SYNC.md
 └── .gitignore
 ```
 

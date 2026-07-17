@@ -6,7 +6,8 @@
 > **上游基线**：https://github.com/ZhangXJ199/TinyLLaVA-Video-R1  
 > **方法论依据**：`doc/基于Video-R1的视频交通异常行为检测项目中的GRPO优化调研报告.pdf` 第 3 节  
 > **主运行路径**：Google Colab（A100）+ Google Drive（仿照已成功路径）  
-> **Drive 根目录**：`/content/drive/MyDrive/tiny-video-r1-GRPO`（结构见 [README.md](./README.md)）
+> **Drive 根目录**：`/content/drive/MyDrive/MixUpLLaVA-video-r1`（结构见 [README.md](./README.md)）  
+> **Drive 共享链接**：https://drive.google.com/drive/folders/1Qjh19WSLGIeu1NX-UYRYAh4oyFQjCp2m?usp=sharing
 
 ---
 
@@ -58,7 +59,7 @@
 ## 1. Drive 路径约定（与 README 一致）
 
 ```
-PROJECT_DIR = /content/drive/MyDrive/tiny-video-r1-GRPO
+PROJECT_DIR = /content/drive/MyDrive/MixUpLLaVA-video-r1
 REPO        = {PROJECT_DIR}/repo/TinyLLaVA-Video-R1
 MIXUP_REPO  = {PROJECT_DIR}/repo/MixUpLLaVA-Video-R1   # 本仓库
 DATA_ROOT   = {PROJECT_DIR}/data/dataset/
@@ -75,7 +76,7 @@ OUT_BASE    = {PROJECT_DIR}/outputs
 | GPU | NVIDIA A100-SXM4-80GB（~85 GB） |
 | Python / PyTorch | 3.12.x / 2.11+cu128（以当次 Colab 为准） |
 | DeepSpeed | ZeRO-3 + **参数** CPU offload（优化器不 offload） |
-| Drive | `tiny-video-r1-GRPO` 下 repo / data / checkpoints / outputs 均存在 |
+| Drive | `MixUpLLaVA-video-r1` 下 repo / data / checkpoints / outputs 均存在 |
 
 ### v1 对照结果（历史，勿覆盖）
 
@@ -109,13 +110,14 @@ Phase 6  开源文档与 Release        ██████████  Week 7�
 | # | 任务 | 交付物 | 状态 |
 |---|------|--------|------|
 | 0.1 | 更新 README / schedule：Colab+Drive 主路径 + Drive 目录结构 | 本文件、README | ✅ |
-| 0.2 | Drive 上确认 `repo/TinyLLaVA-Video-R1`、`data/`、`checkpoints/coldstart`、`outputs/` | 路径检查截图 | ⬜ |
-| 0.3 | 将本仓库 clone / 同步到 `repo/MixUpLLaVA-Video-R1` | Drive 上可读 | ⬜ |
-| 0.4 | 迁移调研 PDF 至 `doc/`（Git 或 Drive `repo/MixUp.../doc/`） | `doc/` | ⬜ |
-| 0.5 | 整理 Colab Notebook 入口（`notebooks/` 或沿用工程文件再迁入） | `mixup-GRPO优化.ipynb` 等 | ⬜ |
-| 0.6 | 从前期工程迁移 CPPO trainer 改动说明 / 补丁到 `mixup/` | `mixup/cppo.py` 或 patches | ⬜ |
+| 0.2 | Drive 上确认 `repo/TinyLLaVA-Video-R1`、`data/`、`checkpoints/coldstart`、`outputs/` | `docs/PHASE0_DRIVE_SYNC.md`（共享页已见四目录；Colab 勾选） | ⬜ Colab |
+| 0.3 | 将本仓库 clone / 同步到 `repo/MixUpLLaVA-Video-R1` | Drive 上可读；步骤见 `docs/PHASE0_DRIVE_SYNC.md` | ⬜ Colab |
+| 0.4 | 迁移调研 PDF 至 `doc/` | `doc/基于Video-R1的…调研报告.pdf` + CPPO 论文 PDF | ✅ |
+| 0.5 | 整理 Colab Notebook 入口 | `notebooks/mixup-GRPO优化.ipynb` | ✅ |
+| 0.6 | 从前期工程迁移 CPPO / 策略补丁到 `mixup/` | `mixup/cppo.py`、`mixup/patches/` | ✅ |
 
-**验收**：README 中的 Drive 树与真实 Drive 一致；Colab 能 `import` / 找到 `REPO`、`CKPT`。
+**验收**：README 中的 Drive 树与真实 Drive 一致；Colab 能找到 `REPO`、`CKPT`；Drive 上存在本仓库副本。  
+**本地进度**：0.1 / 0.4 / 0.5 / 0.6 已在本机 Git 仓库完成；0.2 / 0.3 需打开 Colab 按 `docs/PHASE0_DRIVE_SYNC.md` 勾选。
 
 ---
 
@@ -232,8 +234,8 @@ outputs/{strategy}_{profile}_{data}_{seed}/
 
 - [x] **D0**：放弃 Windows 正式训练路径；确认回到 Colab + Drive  
 - [x] **D0**：更新本仓库 README / schedule（Drive 结构 + 双环境）  
-- [ ] **D1（Dev）**：将本仓库同步到 Drive `repo/MixUpLLaVA-Video-R1`；迁入 Notebook / CPPO 代码说明  
-- [ ] **D1（Dev）**：核对 README 目录树与真实 Drive 是否一致  
+- [x] **D1（Dev）**：Phase 0 本地交付 — `doc/`、`notebooks/`、`mixup/`、`docs/PHASE0_DRIVE_SYNC.md`  
+- [ ] **D1（Colab）**：按 `docs/PHASE0_DRIVE_SYNC.md` 完成 0.2 路径确认 + 0.3 `git clone/pull` 到 Drive  
 - [ ] **D2（A100）**：挂载 Drive → 跑 A2（g8 baseline）  
 - [ ] **D3（A100）**：跑 C2（CPPO p50）→ §对比 → 填 §8 结果表 → 断开  
 
@@ -284,8 +286,8 @@ outputs/{strategy}_{profile}_{data}_{seed}/
 | 调研报告 | `doc/…GRPO优化调研报告.pdf` / 实验目录 `优化方案/` |
 | 上游仓库 | https://github.com/ZhangXJ199/TinyLLaVA-Video-R1 |
 | 前期 Colab Notebook | 实验 `工程文件/GRPO测试优化-….ipynb`、`mixup-GRPO优化.ipynb` |
-| Drive 项目根 | `MyDrive/tiny-video-r1-GRPO` |
-| Drive 备份夹（历史） | https://drive.google.com/drive/folders/1Qjh19WSLGIeu1NX-UYRYAh4oyFQjCp2m |
+| Drive 项目根 | `MyDrive/MixUpLLaVA-video-r1` |
+| Drive 共享包（官方） | https://drive.google.com/drive/folders/1Qjh19WSLGIeu1NX-UYRYAh4oyFQjCp2m?usp=sharing |
 
 ---
 
