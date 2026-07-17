@@ -26,7 +26,7 @@ Windows 本机原生 DeepSpeed 训练流程不稳定，**不作为正式训练�
 
 ## 项目状态
 
-🚧 **开发中** — **Phase 1（CPPO g8 对比）已完成**；后续进入显存标定 / MixUp 模块与消融。
+🚧 **开发中** — **Phase 1（CPPO g8）已完成**；后续锁定 C1 超参 → 模块化实现（不单训）→ **M1 基线 + M5 最终方案** → Phase 5 上游四基准。
 
 - [x] 项目目录与文档（GitHub 骨架）
 - [x] 实验计划表（对齐 Drive 成功路径 + 共享链接）
@@ -34,17 +34,21 @@ Windows 本机原生 DeepSpeed 训练流程不稳定，**不作为正式训练�
 - [x] `notebooks/phase1-cppo-g8.ipynb`（断点续训 + 进度条）
 - [x] `mixup/` CPPO 模块与 trainer patches
 - [x] Phase 1：A2 vs C2（g=8）效率对比 — 见 [`docs/PHASE1_REPORT.md`](./docs/PHASE1_REPORT.md)
-- [ ] MixUp 其余模块（GFPO / NGRPO 等）与消融
-- [ ] Phase 5：扩规模训练 + **上游标准评测**（Video-MME / MVBench / MLVU / MMVU）
+- [ ] Phase 2：锁定 C1（与 Phase1 同参，复用 A2/C2 对照）
+- [ ] Phase 3：GFPO / NGRPO / 基线增强 **代码实现**（不单开训练评测）
+- [ ] Phase 4：训 **M1**（组内基线）+ **M5**（B+CPPO+NGRPO+GFPO 最终方案）
+- [ ] Phase 5：对 **M1 / M5** 跑 **Video-MME、MVBench、MLVU、MMVU**
 
 ### 评估口径（约定）
 
 | 阶段 | 用什么判断「好不好」 |
 |------|----------------------|
-| **训练 / 快验 / 消融过程中** | 训练日志中的 `reward`、`accuracy_reward`、`format_reward`、`loss`、`kl`，以及效率指标 `train_runtime` / `train_steps_per_second` |
-| **Phase 5 总评估（对齐上游）** | 按 [TinyLLaVA-Video-R1](https://github.com/ZhangXJ199/TinyLLaVA-Video-R1) 官方流程，对训完权重跑 **Video-MME、MVBench、MLVU、MMVU**（`scripts/eval/*.sh`） |
+| **训练 / Phase 1–4** | `reward`、`accuracy_reward`、`format_reward`、`loss`、`kl` + `train_runtime` / `steps_per_second`；可与 Phase1 A2/C2 并表 |
+| **Phase 5 总评估** | 按 [TinyLLaVA-Video-R1](https://github.com/ZhangXJ199/TinyLLaVA-Video-R1) 对 **M1 与 M5** 权重跑 **Video-MME、MVBench、MLVU、MMVU** |
 
-Phase 1 结论摘要（无中断全程）：C2（CPPO p=0.5）相对 A2，HF runtime **约 −27%**、steps/s **约 +37%**；去掉 checkpoint 存盘尖峰后时长加速约 **32%**；训练 reward 均值未见下降。细节与校正方法见报告。
+**后续训练对照结构（精简）**：不再做全矩阵消融；正式训练仅为 **M1** 与 **M5**（同 C1 档），中间组合 M2–M4 跳过。
+
+Phase 1 结论摘要：C2 相对 A2，runtime **约 −27%**、steps/s **约 +37%**（去存盘校正时长约 **−32%**）；训练 reward 未见下降。详见报告。
 
 ---
 

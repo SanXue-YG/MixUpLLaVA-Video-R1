@@ -50,9 +50,9 @@
 | **E. 稳定性** | DaGRPO | 调研报告 §3.4 | 梯度冲突掩码 | P2 |
 | **F / G** | GMPO/MAPO、MO-GRPO | §3.4–3.5 | 数值稳定 / 多奖励 | P2 可选 |
 
-**最终配方（待消融）**：`基线增强 + CPPO + NGRPO` 或 `基线增强 + CPPO + GFPO` 等 2–3 模块组合。
+**最终配方（修订）**：不再做全矩阵消融。Phase 4 只训 **M1（项目基线增强 B）** 作组内基线，再训 **M5（B+CPPO+NGRPO+GFPO）** 作为个人最终方案；可与 Phase 1 的 A2/C2 对照。正式下游评测放在 Phase 5。
 
-**暂不纳入首期**：StepGRPO、GRPO-A、GFPO 动态难度采样（二期）。
+**暂不纳入首期**：StepGRPO、GRPO-A、GFPO 动态难度采样（二期）；单模块独立训练评测（Phase 3 只实现代码）。
 
 ---
 
@@ -92,12 +92,47 @@ OUT_BASE    = {PROJECT_DIR}/outputs
 ```
 Phase 0  Drive/仓库对齐 + 文档     ████████░░  Week 1（文档 ✅；Drive 勾选可补）
 Phase 1  Colab 基线 / CPPO(g8)    ██████████  Week 1–2 ✅ 见 docs/PHASE1_REPORT.md
-Phase 2  A100 显存档位标定         ██████░░░░  Week 2
-Phase 3  单策略模块化（GFPO/NGRPO）████████░░  Week 2–4
-Phase 4  MixUp 消融                ████████░░  Week 4–5
-Phase 5  扩规模 + 上游标准评测     ██████████  Week 5–7
+Phase 2  锁定 Phase1 档位（C1）    ████████░░  Week 2（复用 A2/C2 超参，少做新标定）
+Phase 3  单策略代码模块化          ████████░░  Week 2–4（实现开关；不单训单测）
+Phase 4  M1 基线 + M5 最终方案     ████████░░  Week 4–5
+Phase 5  上游四基准总评估          ██████████  Week 5–7（评 M1 vs M5；可对照 Phase1）
 Phase 6  开源文档与 Release        ██████████  Week 7–8
 ```
+
+### 跨阶段对比约定（重要）
+
+为复用 Phase 1 已有产出，**Phase 2 起默认沿用 Phase 1 训练超参档位（C1）**，除非显存不够才降级。下表同时列出上游 [TinyLLaVA-Video-R1](https://github.com/ZhangXJ199/TinyLLaVA-Video-R1) 官方 GRPO 脚本默认值，便于报告中写清「相对原文精简了多少」。
+
+**上游默认来源**：`scripts/train/train_qwen2_reason_nextqa.sh`（及 README：约 **8×A100-40G、~30h**；数据为 NextQA 0–30s 全量约 **5496** 条）。
+
+| 项 | TinyLLaVA-Video-R1（官方默认） | 本项目 C1 / Phase1+（后续默认） | 相对精简（约） |
+|----|-------------------------------|----------------------------------|----------------|
+| GPU 规模 | **8** GPU（脚本 `localhost:0..7`） | **1×A100-80GB**（Colab） | 多卡 → 单卡快验 |
+| DeepSpeed | `zero3.json` | ZeRO-3 + **参数** CPU offload | 适配单卡显存 |
+| 数据 | `nextqa_0-30s.jsonl`（~5496） | `nextqa_small50.jsonl`（**50**） | 样本约 **1/110** |
+| `num_frames`（脚本 / 数据参数） | **16** | **2** | **1/8** |
+| `num_frame`（trainer 内采样） | **16** | **8**（Phase1 `NUM_FRAME_TRAINER`） | **1/2** |
+| `num_queries` | **512** | **32** | **1/16** |
+| `model_max_length` | **3072** | **256** | **1/12** |
+| `learning_rate` | **1e-6** | **5e-6**（Phase1 沿用前期 Colab） | 更高 lr（快验） |
+| 训练长度 | `num_train_epochs=1`（全量 epoch，无 `max_steps`） | `MAX_STEPS=**50**`（快验） | 步数大幅截断 |
+| `NUM_GENERATIONS`（GRPO） | **8**（`tinyllava_trainer_reason.py`） | **8** | **相同**（未精简） |
+| `SAVE_STEPS` / limit | 50000 / 1 | **10** / **1** | 快验更密存盘（Drive 成本高） |
+| CKPT | ColdStart（官方路径） | 同一 `checkpoints/coldstart` | 对齐冷启动 |
+| 训练时长（官方自称） | ~**30 h** / 8×A100-40G | Phase1 A2 约 **2 h** 量级（50 step 快验） | 设定与规模均大幅缩小 |
+
+> 官方默认摘自 [`train_qwen2_reason_nextqa.sh`](https://github.com/ZhangXJ199/TinyLLaVA-Video-R1/blob/main/scripts/train/train_qwen2_reason_nextqa.sh) 与上游 trainer；本项目 C1 以 Phase1 Notebook 为准。写报告时建议单列「相对 TinyLLaVA-Video-R1 的设定精简」，避免把 C1 快验表述为全量复现。
+
+| 项 | Phase 1 已用值（后续默认，同上 C1） |
+|----|---------------------------|
+| `NUM_GENERATIONS` | **8** |
+| `NUM_FRAMES` / `NUM_QUERIES` / `MODEL_MAX_LENGTH` | **2 / 32 / 256** |
+| `MAX_STEPS`（快验） | **50**（扩规模时再另开实验，需在报告中单独标注） |
+| 数据 | `nextqa_small50.jsonl`（扩规模换 10%/全量时单独成组） |
+| `SAVE_STEPS` / `SAVE_TOTAL_LIMIT` | **10 / 1** |
+| CKPT | 同一 `checkpoints/coldstart` |
+
+这样 **A2 / C2 / M1 / M5** 可在同一档位下并表对照（训练期 reward + 效率；Phase 5 再对 M1/M5 做官方四基准）。写报告时建议单独一小节「相对 TinyLLaVA-Video-R1 的设定精简」，引用上表，避免把 C1 快验结果直接表述为「复现了官方全量训练」。
 
 ---
 
@@ -148,90 +183,96 @@ Phase 6  开源文档与 Release        ██████████  Week 7�
 
 ---
 
-### Phase 2：A100 显存档位标定（第 2 周）
+### Phase 2：锁定档位以复用 Phase 1（第 2 周）
 
-**目标**：在 A100-80GB 上标定可稳定档位（替代 Windows 12GB 规划）。
+**目标**：确认后续实验继续使用 Phase 1 的 **C1 档**，使 A2/C2 结果可直接参与后续对照；**不再另开大规模档位扫参**（除非 OOM）。
 
 | 档位 | num_gen | num_frames | num_queries | max_length | 用途 |
 |------|---------|------------|-------------|------------|------|
-| C0 快验 | 4 | 2 | 32 | 256 | 冒烟 / 调试 |
-| C1 推荐 | **8** | 2 | 32 | 256 | CPPO 放大（当前主档） |
-| C2 挑战 | 8–16 | 2–4 | 32–64 | 512 | 显存有余时 |
+| C0 快验 | 4 | 2 | 32 | 256 | 仅调试 / OOM 兜底 |
+| **C1（锁定）** | **8** | **2** | **32** | **256** | **Phase 1 已用；后续默认** |
+| C2 挑战 | 8–16 | 2–4 | 32–64 | 512 | 显存有余且明确升级时才用（须单独成表，不与 Phase1 混比） |
 
-| # | 任务 | 交付物 |
-|---|------|--------|
-| 2.1 | 记录各档 OOM 边界与 steps/s | `docs/MEMORY_BENCHMARK_COLAB.md` |
-| 2.2 | 配置写入 `configs/`（yaml 或 Notebook 常量） | `configs/colab_c1.yaml` |
-| 2.3 | 约定：Train 会话只用 C1，除非明确升级 C2 | schedule 勾选 |
+| # | 任务 | 交付物 | 状态 |
+|---|------|--------|------|
+| 2.1 | 将 C1 超参写入 `configs/colab_c1.yaml`（与 Phase1 Notebook 常量对齐） | `configs/colab_c1.yaml` | ⬜ |
+| 2.2 | 约定：Train 默认 C1；换档须在报告声明「不可与 Phase1 直接比」 | 本文件 | ⬜ |
+| 2.3 | （可选）文档化 Phase1 实测显存 / steps/s | `docs/MEMORY_BENCHMARK_COLAB.md` | ⬜ 可选 |
 
 ---
 
-### Phase 3：单策略模块化（第 2–4 周）
+### Phase 3：单策略模块化——只实现、不单训（第 2–4 周）
 
-**目标**：每种优化独立开关；代码在 GitHub `mixup/`，训练仍打补丁到 Drive 上 `REPO/tinyllava/train/` 或统一入口。
+**目标**：在 GitHub `mixup/` 实现可开关模块；训练时打补丁到 Drive `REPO`。**本阶段不额外开跑「单模块性能」训练**（避免算力分散）；正确性靠代码审查 + 可选 1–2 step 冒烟。
 
 ```
 mixup/
 ├── __init__.py
 ├── registry.py
-├── cppo.py
-├── gfpo.py
-├── ngrpo.py
-├── project_baseline.py
-└── trainer_mixup.py
+├── cppo.py              # ✅ Phase1 已用
+├── gfpo.py              # 待实现
+├── ngrpo.py             # 待实现
+├── project_baseline.py  # 策略 B / 难度+长度（待完善）
+└── trainer_mixup.py     # 统一入口（待实现）
 ```
 
-| 策略 | 前期资产 | 任务 | 优先级 |
-|------|----------|------|--------|
-| CPPO | `tinyllava_trainer_reason.py`（工程文件） | 参数化 `cppo_pruning_rate` | P0 |
-| 项目基线增强 | 策略 B 补丁 | 难度 + 长度 reward 解耦 | P0 |
-| GFPO | 调研报告式 | Top-k 掩码 | P1 |
-| NGRPO | 调研报告 | 全错 group 校准 | P1 |
+| 策略 | 任务 | 优先级 | 本阶段训练？ |
+|------|------|--------|--------------|
+| CPPO | 已参数化 `cppo_pruning_rate` | P0 | ✅ 已在 Phase1 |
+| 项目基线增强（B） | 难度 + 长度 reward 解耦 | P0 | ❌ → Phase4 训 **M1** |
+| GFPO | Top-k 掩码 | P1 | ❌ → 仅随 **M5** |
+| NGRPO | 全错 group 校准 | P1 | ❌ → 仅随 **M5** |
 
-**输出命名**：
+**输出命名（Phase4 起）**：
 
 ```
-outputs/{strategy}_{profile}_{data}_{seed}/
+outputs/{run_id}_c1_small50/     # 例：m1_baseline_b_c1_small50 / m5_mixup_c1_small50
   ├── trainer_state.json
-  ├── run_config.yaml
-  └── metrics_summary.json
+  └── ...
 ```
 
 ---
 
-### Phase 4：MixUp 消融（第 4–5 周）
+### Phase 4：精简训练——M1 基线 + M5 最终方案（第 4–5 周）
 
-| 实验 ID | 组合 | 假设 |
-|---------|------|------|
-| M0 | Baseline GRPO | 对照 |
-| M1 | 项目基线增强（B） | 质量↑ |
-| M2 | B + CPPO | 质量保持 + 加速 |
-| M3 | B + CPPO + NGRPO | 更稳 |
-| M4 | B + CPPO + GFPO | 更简洁 |
-| M5 | B + CPPO + NGRPO + GFPO | 最终候选 |
+**修订说明**：取消 M0/M2/M3/M4 全矩阵消融。只跑两组正式训练（同 Phase1 **C1** 档 + 同数据设定，便于与 A2/C2 对照）：
 
-在 **同一 Drive 数据 / CKPT / 档位** 下完成；优先 50 或 10% 子集，再扩规模。
+| 实验 ID | 组合 | 角色 | 是否训练 |
+|---------|------|------|----------|
+| （对照）A2 / C2 | GRPO / CPPO p=0.5 | Phase1 已有 | ✅ 已完成，直接引用 |
+| **M1** | 项目基线增强（B） | **组内基线**（对应项目组原始设计方向） | ✅ 本阶段训练 |
+| ~~M2–M4~~ | 中间组合 | — | ❌ **不跑** |
+| **M5** | B + CPPO + NGRPO + GFPO | **个人最终优化方案 / 开源主成果** | ✅ 本阶段训练 |
+
+| # | 任务 | 说明 |
+|---|------|------|
+| 4.1 | 训 **M1** | 同 C1 超参；输出如 `outputs/m1_baseline_b_c1_small50/` |
+| 4.2 | 训 **M5** | 打开 B+CPPO+NGRPO+GFPO；输出如 `outputs/m5_mixup_c1_small50/` |
+| 4.3 | 训练期对照表 | M1 / M5 vs Phase1 A2、C2：`reward` + runtime/steps/s（去存盘校正可选） |
+| 4.4 | 报告 | `docs/PHASE4_REPORT.md`（说明跳过中间组合、算力集中在 M5） |
+
+在 **同一 Drive 数据 / CKPT / C1 档位** 下完成；若日后扩 10%/全量，须新开实验 ID，勿覆盖 small50 目录。
 
 ---
 
-### Phase 5：扩规模训练与评估（第 5–7 周）
+### Phase 5：上游标准总评估（第 5–7 周）
 
 **评估分层（约定）**：
 
 | 层级 | 指标 | 用途 |
 |------|------|------|
-| 训练期 / 消融筛选 | `reward`、`accuracy_reward`、`format_reward`、`loss`、`kl` + 效率 | Phase 1–4 日常判定 |
-| **总评估（对齐上游）** | **Video-MME、MVBench、MLVU、MMVU**（[TinyLLaVA-Video-R1](https://github.com/ZhangXJ199/TinyLLaVA-Video-R1) `scripts/eval/*.sh`） | Phase 5 对最终权重做正式对比 |
+| 训练期 | `reward` / `accuracy_reward` / `format_reward` / `loss` / `kl` + 效率 | Phase 1–4；含 A2/C2/M1/M5 并表 |
+| **总评估（对齐上游）** | **Video-MME、MVBench、MLVU、MMVU**（[TinyLLaVA-Video-R1](https://github.com/ZhangXJ199/TinyLLaVA-Video-R1) `scripts/eval/*.sh`） | **主要评 Phase 4 的 M1（基线）与 M5（最终方案）权重** |
 
 | # | 任务 | 说明 |
 |---|------|------|
-| 5.1 | 10% / 全量 baseline | 视 A100 预算；可等步数公平对比 |
-| 5.2 | 最优 MixUp 配方 | 与 baseline 同数据同档位 |
-| 5.3 | 训练期轻量对照 | reward / parse rate / 样例（筛选用） |
-| 5.4 | **上游标准评测** | 对 baseline 与 MixUp 最优权重跑 Video-MME / MVBench / MLVU / MMVU（可先 1–2 项再全开） |
-| 5.5 | 曲线与资源统计 | 写入 `outputs/` 与 `docs/` |
+| 5.1 | 准备评测数据与脚本路径 | 按上游 README 放置 Video-MME / MVBench / MLVU / MMVU |
+| 5.2 | 评测 **M1** 权重 | 四基准（可先 1–2 项冒烟再全开） |
+| 5.3 | 评测 **M5** 权重 | 同设置、同脚本，与 M1 公平对比 |
+| 5.4 | （可选）引用 Phase1 | A2/C2 若保留最终权重且同协议，可附录对照；否则只报告训练期指标 |
+| 5.5 | 总评报告 | `docs/PHASE5_EVAL_REPORT.md` + 更新 README 结果表 |
 
-风险：会话中断 → 输出落盘 Drive；`save_strategy` / resume 按预算开启；评测数据体积大，需单独预留 Drive 空间。
+风险：评测数据体积大，需预留 Drive；会话中断时权重留在 `outputs/`；勿与换档实验混比。
 
 ---
 
@@ -239,22 +280,21 @@ outputs/{strategy}_{profile}_{data}_{seed}/
 
 | # | 任务 |
 |---|------|
-| 6.1 | README 完善（Drive 结构 + Colab 步骤 + MixUp 开关） |
+| 6.1 | README 完善（Drive 结构 + Colab 步骤 + MixUp 开关：M1 / M5） |
 | 6.2 | LICENSE（Apache-2.0） |
 | 6.3 | 示例 Notebook / 一键复现说明 |
-| 6.4 | 消融报告 + 与 v1 CPPO 对比 |
-| 6.5 | GitHub Release v0.1.0 |
+| 6.4 | Phase1+4 训练对照 + Phase5 四基准结果 |
+| 6.5 | GitHub Release v0.1.0（主打 **M5** 配方） |
 
 ---
 
-## 4. 近期执行清单（接下来 3 天）
+## 4. 近期执行清单
 
-- [x] **D0**：放弃 Windows 正式训练路径；确认回到 Colab + Drive  
-- [x] **D0**：更新本仓库 README / schedule（Drive 结构 + 双环境）  
-- [x] **D1（Dev）**：Phase 0 本地交付 — `doc/`、`notebooks/`、`mixup/`、`docs/PHASE0_DRIVE_SYNC.md`  
-- [ ] **D1（Colab）**：按 `docs/PHASE0_DRIVE_SYNC.md` 完成 0.2 路径确认 + 0.3 `git clone/pull` 到 Drive  
-- [x] **D2（A100）**：挂载 Drive → 跑 A2（g8 baseline）  
-- [x] **D3（A100）**：跑 C2（CPPO p50）→ 对比 → 见 `docs/PHASE1_REPORT.md` / §8  
+- [x] Phase 1：A2 / C2（g8）无中断对比 + `docs/PHASE1_REPORT.md`
+- [ ] **Phase 2**：锁定 C1 超参到 `configs/colab_c1.yaml`（与 Phase1 对齐）
+- [ ] **Phase 3**：实现 `gfpo.py` / `ngrpo.py` / 完善 `project_baseline.py`（**不单训**）
+- [ ] **Phase 4**：训 **M1** → 训 **M5** → 与 A2/C2 训练期对照
+- [ ] **Phase 5**：对 **M1 / M5** 跑 Video-MME、MVBench、MLVU、MMVU
 
 ---
 
@@ -270,9 +310,9 @@ outputs/{strategy}_{profile}_{data}_{seed}/
 
 ### 5.2 公平对比
 
-- 同一 `DATA_ROOT` / jsonl / `CKPT` / 档位（C0/C1）  
-- A vs CPPO：**仅**差 `cppo_pruning_rate` 与输出目录  
-- 策略 B / GFPO / NGRPO 改目标函数时，单独成组，不与「纯加速」混谈  
+- 默认锁定 **C1**（与 Phase1 相同）：同一 `DATA_ROOT` / jsonl / `CKPT` / g=8 / frames=2  
+- Phase1 **A2 / C2** 可与 Phase4 **M1 / M5** 做训练期并表；换档或换数据规模须单独标注  
+- 正式下游能力对比：Phase5 只对 **M1 vs M5** 跑上游四基准（主结论）  
 
 ### 5.3 Git 与 Drive 分工
 
@@ -289,7 +329,7 @@ outputs/{strategy}_{profile}_{data}_{seed}/
 [ ] PROJECT_DIR / REPO / CKPT / SMALL_JSONL 存在
 [ ] NUM_GENERATIONS 与档位一致（推荐 8）
 [ ] Trainer 已重置为本次策略（无残留错误补丁）
-[ ] 本次只跑清单内实验（如 A2+C2）
+[ ] 本次只跑清单内实验（如 M1 或 M5；勿顺手开 M2–M4）
 [ ] 结束后确认 outputs 已在 Drive
 ```
 
@@ -317,11 +357,11 @@ outputs/{strategy}_{profile}_{data}_{seed}/
 |------|----------|----------|----------|------|
 | Phase 0 | 2026-07-16 | 2026-07-18 | 文档侧 ✅ | Drive 勾选可补 |
 | Phase 1 | 2026-07-17 | 2026-07-25 | **2026-07-17** | A2/C2 g8 ✅；见 `docs/PHASE1_REPORT.md` |
-| Phase 2 | 2026-07-20 | 2026-07-23 | | 显存档位 |
-| Phase 3 | 2026-07-25 | 2026-08-15 | | GFPO/NGRPO |
-| Phase 4 | 2026-08-10 | 2026-08-22 | | 消融（过程用 reward） |
-| Phase 5 | 2026-08-22 | 2026-09-10 | | 扩规模 + **上游四基准评测** |
-| Phase 6 | 2026-09-10 | 2026-09-20 | | Release |
+| Phase 2 | 2026-07-18 | 2026-07-23 | | 锁定 C1，复用 Phase1 |
+| Phase 3 | 2026-07-20 | 2026-08-05 | | 代码模块化，不单训 |
+| Phase 4 | 2026-08-05 | 2026-08-20 | | **仅 M1 + M5** |
+| Phase 5 | 2026-08-20 | 2026-09-10 | | 四基准评 **M1 vs M5** |
+| Phase 6 | 2026-09-10 | 2026-09-20 | | Release（主打 M5） |
 
 ---
 
@@ -338,4 +378,4 @@ outputs/{strategy}_{profile}_{data}_{seed}/
 
 ---
 
-*最后更新：2026-07-17 · Phase 1 ✅ · 维护者：张一鸣 · 主路径：Colab + Google Drive*
+*最后更新：2026-07-18 · Phase 1 ✅ · 后续：锁定 C1 → 模块化(不单训) → M1+M5 → 四基准评 M1/M5*
