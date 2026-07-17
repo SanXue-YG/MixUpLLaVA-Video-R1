@@ -1,16 +1,25 @@
-# notebooks/
+# notebooks/ — Phase 1 Colab 入口
 
-Colab experiment entrypoints for MixUpLLaVA-Video-R1.
+| Notebook | 用途 |
+|----------|------|
+| **`phase1-cppo-g8.ipynb`** | **Phase 1 主入口**：A2 / C2 /（可选）C3，g=8，默认快验 50 step |
+| `mixup-GRPO优化.ipynb` | 与上相同内容（兼容旧文件名） |
 
-| Notebook | Purpose |
-|----------|---------|
-| `mixup-GRPO优化.ipynb` | v2 主实验：环境检查、路径（`MixUpLLaVA-video-r1`）、A2/C2/C3、结果对比 |
+## Phase 1 流程摘要
 
-## Usage
+1. 挂载 Drive → 确认 A100  
+2. `PROJECT_DIR=/content/drive/MyDrive/MixUpLLaVA-video-r1`  
+3. Phase 0 验收 + `git clone/pull` MixUp 仓库  
+4. 小数据集 → 装依赖 → 从 `mixup/patches` 覆盖 trainer  
+5. 重跑 §6（进度条 + 断点）→ 训练 **A2** → **C2** → 对比（可粘贴 schedule §8）  
 
-1. Upload this folder (or whole repo) to Drive:  
-   `MixUpLLaVA-video-r1/repo/MixUpLLaVA-Video-R1/`
-2. Open the notebook in Colab (or copy cells into a Colab notebook).
-3. Mount Drive → run sections in order (see notebook checklist).
+## 断点续训 / 进度
 
-Shared Drive pack: https://drive.google.com/drive/folders/1Qjh19WSLGIeu1NX-UYRYAh4oyFQjCp2m?usp=sharing
+- `SAVE_STEPS=5`：训练中写入 `outputs/.../checkpoint-*`（保留最近 2 个）  
+- `ENABLE_RESUME=True`：有 checkpoint 时自动续训  
+- 日志流式输出 + 简易进度条 / ETA  
+- 断连后：按重连顺序跑完 §0–§6，再跑对应训练单元  
+
+共享包：https://drive.google.com/drive/folders/1Qjh19WSLGIeu1NX-UYRYAh4oyFQjCp2m?usp=sharing  
+
+计划详见仓库根目录 `schedule.md` Phase 1。

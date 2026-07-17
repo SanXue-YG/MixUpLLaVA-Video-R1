@@ -113,7 +113,7 @@ Phase 6  开源文档与 Release        ██████████  Week 7�
 | 0.2 | Drive 上确认 `repo/TinyLLaVA-Video-R1`、`data/`、`checkpoints/coldstart`、`outputs/` | `docs/PHASE0_DRIVE_SYNC.md`（共享页已见四目录；Colab 勾选） | ⬜ Colab |
 | 0.3 | 将本仓库 clone / 同步到 `repo/MixUpLLaVA-Video-R1` | Drive 上可读；步骤见 `docs/PHASE0_DRIVE_SYNC.md` | ⬜ Colab |
 | 0.4 | 迁移调研 PDF 至 `doc/` | `doc/基于Video-R1的…调研报告.pdf` + CPPO 论文 PDF | ✅ |
-| 0.5 | 整理 Colab Notebook 入口 | `notebooks/mixup-GRPO优化.ipynb` | ✅ |
+| 0.5 | 整理 Colab Notebook 入口 | `notebooks/phase1-cppo-g8.ipynb`（别名 `mixup-GRPO优化.ipynb`） | ✅ |
 | 0.6 | 从前期工程迁移 CPPO / 策略补丁到 `mixup/` | `mixup/cppo.py`、`mixup/patches/` | ✅ |
 
 **验收**：README 中的 Drive 树与真实 Drive 一致；Colab 能找到 `REPO`、`CKPT`；Drive 上存在本仓库副本。  
@@ -125,17 +125,29 @@ Phase 6  开源文档与 Release        ██████████  Week 7�
 
 **目标**：在 **同一 Drive 路径** 上跑通 g8 对比，争取比 v1 更明显的 CPPO 加速；建立 MixUp 前的效率基线。
 
-| # | 任务 | 说明 | 交付物 |
-|---|------|------|--------|
-| 1.1 | 固定 Notebook 超参 | `NUM_GENERATIONS=8`；快验 `MAX_STEPS=50`，正式可 100 | 路径配置单元 |
-| 1.2 | **A2**：GRPO baseline（无剪枝） | 同参、同数据、同 CKPT | `outputs/grpo_A_g8/` |
-| 1.3 | **C2**：CPPO `pruning_rate=0.5` | 仅改剪枝率 | `outputs/grpo_CPPO_g8_p50/` |
-| 1.4 | （可选）**C3**：`pruning_rate=0.75` | 加速上限 | `outputs/grpo_CPPO_g8_p75/` |
-| 1.5 | 对比汇总 | runtime / steps/s / reward / speedup% | schedule §8 或 docs |
+**Notebook 入口**：`notebooks/phase1-cppo-g8.ipynb`（同内容别名：`notebooks/mixup-GRPO优化.ipynb`）
+
+| # | 任务 | 说明 | 交付物 | Notebook 章节 |
+|---|------|------|--------|----------------|
+| 1.1 | 固定超参 | `NUM_GENERATIONS=8`；默认快验 `MAX_STEPS=50`（正式改 100） | 路径配置单元 | §2 |
+| 1.2 | **A2** GRPO baseline | 无剪枝；patches → trainer | `outputs/grpo_A_g8/` | §5 + §7 |
+| 1.3 | **C2** CPPO p=0.5 | 仅改剪枝率 | `outputs/grpo_CPPO_g8_p50/` | §8 |
+| 1.4 | （可选）**C3** p=0.75 | 加速上限 | `outputs/grpo_CPPO_g8_p75/` | §9 |
+| 1.5 | 对比汇总 | runtime / steps/s / reward / speedup% | schedule §8 表格 | §10 |
+| 1.6 | 进度条 + 断点续训 | 流式日志 / 进度条；`SAVE_STEPS=5` + 自动 resume（**A2/C2/C3**） | Notebook §2/§6 | §6 |
 
 **对比指标（每实验必记）**：`loss`, `reward`, `reward_std`, `kl`, `train_runtime`, `steps_per_second`。
 
-**成本提示**：A100 贵，优先 A2+C2；C3 / g16 视结果再开。
+**耗时预估**：v1（g=4、50 step）合计约 **29 min**；A2（g=8、50 step）经验约 **45–90 min**（含加载）。
+
+**断点 / 进度 / 息屏**：
+- 默认 `SAVE_STEPS=5`、`ENABLE_RESUME=True`：每 5 step 写 Drive `checkpoint-*`（保留最近 2 个）；断连后重跑 §0–§6 再跑对应训练单元即可续训。
+- 若某次启动时仍是 `save_strategy=no` 且目录无 `checkpoint-*`，只能整次重跑该策略。
+- 训练在 Colab GPU；浏览器断连仍可能杀会话 → Mac 建议 `caffeinate -dims`，保持标签页。
+
+**成本提示**：A100 贵，优先 A2+C2；C3 / g16 视结果再开。跑前先完成 §2.5 Phase 0 验收（Drive 四目录 + MixUp 仓库 pull）。
+
+**本地进度**：1.6 已合入 `phase1-cppo-g8.ipynb`（同步到 Colab 后重跑 A2）。
 
 ---
 
