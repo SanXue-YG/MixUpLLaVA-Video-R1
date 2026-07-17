@@ -136,7 +136,13 @@ Phase 6  开源文档与 Release        ██████████  Week 7�
 | 1.5 | 对比汇总 | runtime / steps/s / reward / speedup% | schedule §8 表格 | §10 |
 | 1.6 | 进度条 + 断点续训 | 流式日志 / 进度条；`SAVE_STEPS=10` + `SAVE_TOTAL_LIMIT=1` + 自动 resume（**A2/C2/C3**） | Notebook §2/§6 | §6 |
 
-**对比指标（每实验必记）**：`loss`, `reward`, `reward_std`, `kl`, `train_runtime`, `steps_per_second`。
+**对比指标（每实验必记）**：`loss`, `reward`, `reward_std`, `kl`, **`train_steps_per_second`（主）**, `train_runtime`（辅，resume 时慎用）。
+
+**判定（主）**：相对 A2 的 steps/s 提升  
+\(\mathrm{speedup\%}=(sps_C-sps_{A2})/sps_{A2}\times 100\)，目标 **≥10%**，且 reward 不明显下降。  
+`train_steps_per_second` 在训练 **正常结束** 时写入 `trainer_state.json`（逐步 log 通常没有）；也可用 tqdm 的 `s/it` 换算 \(sps\approx 1/(s/it)\)。
+
+不必为「精准 runtime」强制从头重跑 A2；若只要正式墙钟数字，再开一次干净全程即可。
 
 **耗时预估**：v1（g=4、50 step）合计约 **29 min**；A2（g=8、50 step）经验约 **45–90 min**（含加载）。
 
@@ -320,9 +326,11 @@ outputs/{strategy}_{profile}_{data}_{seed}/
 
 ## 8. v2 实验结果（待填）
 
-| 策略 | 输出目录 | max_steps | train_runtime(s) | steps/s | reward | 相对 A2 加速 |
-|------|----------|-----------|------------------|---------|--------|--------------|
-| A2 | `grpo_A_g8` | | | | | — |
+主列：`steps/s` 与相对 A2 的 **steps/s 加速**；`train_runtime` 仅参考。
+
+| 策略 | 输出目录 | max_steps | steps/s | 相对A2加速(steps/s) | train_runtime(s) | reward |
+|------|----------|-----------|---------|---------------------|------------------|--------|
+| A2 | `grpo_A_g8` | | | — | | |
 | C2 | `grpo_CPPO_g8_p50` | | | | | |
 | C3 | `grpo_CPPO_g8_p75` | | | | | |
 
