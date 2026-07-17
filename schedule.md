@@ -134,20 +134,21 @@ Phase 6  开源文档与 Release        ██████████  Week 7�
 | 1.3 | **C2** CPPO p=0.5 | 仅改剪枝率 | `outputs/grpo_CPPO_g8_p50/` | §8 |
 | 1.4 | （可选）**C3** p=0.75 | 加速上限 | `outputs/grpo_CPPO_g8_p75/` | §9 |
 | 1.5 | 对比汇总 | runtime / steps/s / reward / speedup% | schedule §8 表格 | §10 |
-| 1.6 | 进度条 + 断点续训 | 流式日志 / 进度条；`SAVE_STEPS=5` + 自动 resume（**A2/C2/C3**） | Notebook §2/§6 | §6 |
+| 1.6 | 进度条 + 断点续训 | 流式日志 / 进度条；`SAVE_STEPS=10` + `SAVE_TOTAL_LIMIT=1` + 自动 resume（**A2/C2/C3**） | Notebook §2/§6 | §6 |
 
 **对比指标（每实验必记）**：`loss`, `reward`, `reward_std`, `kl`, `train_runtime`, `steps_per_second`。
 
 **耗时预估**：v1（g=4、50 step）合计约 **29 min**；A2（g=8、50 step）经验约 **45–90 min**（含加载）。
 
 **断点 / 进度 / 息屏**：
-- 默认 `SAVE_STEPS=5`、`ENABLE_RESUME=True`：每 5 step 写 Drive `checkpoint-*`（保留最近 2 个）；断连后重跑 §0–§6 再跑对应训练单元即可续训。
-- 若某次启动时仍是 `save_strategy=no` 且目录无 `checkpoint-*`，只能整次重跑该策略。
+- 默认 `SAVE_STEPS=10`、`SAVE_TOTAL_LIMIT=1`、`ENABLE_RESUME=True`：每 10 step 写 Drive，只留最新 1 个；断连后重跑 §0–§6 再跑对应训练单元即可续训。
+- **删掉的 checkpoint 会进回收站并继续占配额 → 必须清空回收站。**
+- A2 若停在 `checkpoint-40`：续训至 `MAX_STEPS=50` 即可（约再 10 step）。
 - 训练在 Colab GPU；浏览器断连仍可能杀会话 → Mac 建议 `caffeinate -dims`，保持标签页。
 
 **成本提示**：A100 贵，优先 A2+C2；C3 / g16 视结果再开。跑前先完成 §2.5 Phase 0 验收（Drive 四目录 + MixUp 仓库 pull）。
 
-**本地进度**：1.6 已合入 `phase1-cppo-g8.ipynb`（同步到 Colab 后重跑 A2）。
+**本地进度**：`SAVE_STEPS=10`；A2 从 checkpoint-40 续跑中/待跑。
 
 ---
 

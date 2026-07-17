@@ -15,10 +15,10 @@
 
 ## 断点续训 / 进度
 
-- `SAVE_STEPS=5`：训练中写入 `outputs/.../checkpoint-*`（保留最近 2 个）  
-- `ENABLE_RESUME=True`：有 checkpoint 时自动续训  
+- `SAVE_STEPS=10`：约每 10 step 写入 `checkpoint-*`（`SAVE_TOTAL_LIMIT=1` 只留最新）  
+- `ENABLE_RESUME=True`：有 checkpoint 时自动续训（如 A2 从 `checkpoint-40` → 50）  
 - 日志流式输出 + 简易进度条 / ETA  
-- 断连后：按重连顺序跑完 §0–§6，再跑对应训练单元  
+- 断连后：按重连顺序跑完 §0–§6，再跑对应训练单元；**清空 Drive 回收站** 避免占配额  
 
 共享包：https://drive.google.com/drive/folders/1Qjh19WSLGIeu1NX-UYRYAh4oyFQjCp2m?usp=sharing  
 
