@@ -44,7 +44,7 @@
 | 层级 | 模块 | 来源 | 主要作用 | 优先级 |
 |------|------|------|----------|--------|
 | **A. 项目基线增强** | Difficulty-aware + 自适应长度 reward | 调研报告 §2.3 / 策略 B | 难度样本学习、控长度 | P0 |
-| **B. 效率** | CPPO（\|advantage\| 剪枝） | 调研报告 §3.1 | 降计算量、加速 | P0（已复现，待 g8 放大加速） |
+| B. 效率 | CPPO（\|advantage\| 剪枝） | 调研报告 §3.1 | 降计算量、加速 | **P0 ✅ Phase 1 g8 已验证** |
 | **C. 效率/简洁** | GFPO（Top-k 掩码） | 调研报告 §3.1 | 抑冗余推理 | P1 |
 | **D. 稳定性** | NGRPO（负信号增强） | 调研报告 §3.3 | 全错 group 无梯度 | P1 |
 | **E. 稳定性** | DaGRPO | 调研报告 §3.4 | 梯度冲突掩码 | P2 |
@@ -90,12 +90,12 @@ OUT_BASE    = {PROJECT_DIR}/outputs
 ## 2. 里程碑总览
 
 ```
-Phase 0  Drive/仓库对齐 + 文档     ████░░░░░░  Week 1
-Phase 1  Colab 基线 / CPPO(g8)    ██████░░░░  Week 1–2
+Phase 0  Drive/仓库对齐 + 文档     ████████░░  Week 1（文档 ✅；Drive 勾选可补）
+Phase 1  Colab 基线 / CPPO(g8)    ██████████  Week 1–2 ✅ 见 docs/PHASE1_REPORT.md
 Phase 2  A100 显存档位标定         ██████░░░░  Week 2
 Phase 3  单策略模块化（GFPO/NGRPO）████████░░  Week 2–4
 Phase 4  MixUp 消融                ████████░░  Week 4–5
-Phase 5  扩规模训练与评估          ██████████  Week 5–7
+Phase 5  扩规模 + 上游标准评测     ██████████  Week 5–7
 Phase 6  开源文档与 Release        ██████████  Week 7–8
 ```
 
@@ -127,34 +127,24 @@ Phase 6  开源文档与 Release        ██████████  Week 7�
 
 **Notebook 入口**：`notebooks/phase1-cppo-g8.ipynb`（同内容别名：`notebooks/mixup-GRPO优化.ipynb`）
 
-| # | 任务 | 说明 | 交付物 | Notebook 章节 |
-|---|------|------|--------|----------------|
-| 1.1 | 固定超参 | `NUM_GENERATIONS=8`；默认快验 `MAX_STEPS=50`（正式改 100） | 路径配置单元 | §2 |
-| 1.2 | **A2** GRPO baseline | 无剪枝；patches → trainer | `outputs/grpo_A_g8/` | §5 + §7 |
-| 1.3 | **C2** CPPO p=0.5 | 仅改剪枝率 | `outputs/grpo_CPPO_g8_p50/` | §8 |
-| 1.4 | （可选）**C3** p=0.75 | 加速上限 | `outputs/grpo_CPPO_g8_p75/` | §9 |
-| 1.5 | 对比汇总 | runtime / steps/s / reward / speedup% | schedule §8 表格 | §10 |
-| 1.6 | 进度条 + 断点续训 | 流式日志 / 进度条；`SAVE_STEPS=10` + `SAVE_TOTAL_LIMIT=1` + 自动 resume（**A2/C2/C3**） | Notebook §2/§6 | §6 |
+| # | 任务 | 说明 | 交付物 | Notebook 章节 | 状态 |
+|---|------|------|--------|----------------|------|
+| 1.1 | 固定超参 | `NUM_GENERATIONS=8`；快验 `MAX_STEPS=50` | 路径配置单元 | §2 | ✅ |
+| 1.2 | **A2** GRPO baseline | 无剪枝 | `outputs/grpo_A_g8/` | §5 + §7 | ✅ |
+| 1.3 | **C2** CPPO p=0.5 | 仅改剪枝率 | `outputs/grpo_CPPO_g8_p50/` | §8 | ✅ |
+| 1.4 | （可选）**C3** p=0.75 | 加速上限 | `outputs/grpo_CPPO_g8_p75/` | §9 | ⬜ 可选 |
+| 1.5 | 对比汇总 | runtime / steps/s / reward | `docs/PHASE1_REPORT.md` + §8 | §10 | ✅ |
+| 1.6 | 进度条 + 断点续训 | `SAVE_STEPS=10` + resume | Notebook §2/§6 | §6 | ✅ |
 
-**对比指标（每实验必记）**：`loss`, `reward`, `reward_std`, `kl`, **`train_steps_per_second`（主）**, `train_runtime`（辅，resume 时慎用）。
+**评估口径（Phase 1–4 训练期）**：用训练日志 `reward` / `accuracy_reward` / `format_reward` / `loss` / `kl` 判断质量是否保持；用 `train_runtime` / `train_steps_per_second`（及去存盘校正）判断效率。  
+**正式下游能力**：留到 **Phase 5**，按上游 TinyLLaVA-Video-R1 的 Video-MME / MVBench / MLVU / MMVU 做总评估。
 
-**判定（主）**：相对 A2 的 steps/s 提升  
-\(\mathrm{speedup\%}=(sps_C-sps_{A2})/sps_{A2}\times 100\)，目标 **≥10%**，且 reward 不明显下降。  
-`train_steps_per_second` 在训练 **正常结束** 时写入 `trainer_state.json`（逐步 log 通常没有）；也可用 tqdm 的 `s/it` 换算 \(sps\approx 1/(s/it)\)。
+**判定（主）**：相对 A2 的 steps/s 提升，目标 **≥10%**，且 reward 不明显下降。  
+**结果**：无中断全程重跑后达成（runtime **−27.4%**，steps/s **+37.5%**；去存盘校正时长 **−31.9%**）。详见 [`docs/PHASE1_REPORT.md`](./docs/PHASE1_REPORT.md)。
 
-不必为「精准 runtime」强制从头重跑 A2；若只要正式墙钟数字，再开一次干净全程即可。
+**断点 / 云盘**：`SAVE_STEPS=10`、`SAVE_TOTAL_LIMIT=1`；删除的 checkpoint 进回收站仍占配额 → 须清空回收站。
 
-**耗时预估**：v1（g=4、50 step）合计约 **29 min**；A2（g=8、50 step）经验约 **45–90 min**（含加载）。
-
-**断点 / 进度 / 息屏**：
-- 默认 `SAVE_STEPS=10`、`SAVE_TOTAL_LIMIT=1`、`ENABLE_RESUME=True`：每 10 step 写 Drive，只留最新 1 个；断连后重跑 §0–§6 再跑对应训练单元即可续训。
-- **删掉的 checkpoint 会进回收站并继续占配额 → 必须清空回收站。**
-- A2 若停在 `checkpoint-40`：续训至 `MAX_STEPS=50` 即可（约再 10 step）。
-- 训练在 Colab GPU；浏览器断连仍可能杀会话 → Mac 建议 `caffeinate -dims`，保持标签页。
-
-**成本提示**：A100 贵，优先 A2+C2；C3 / g16 视结果再开。跑前先完成 §2.5 Phase 0 验收（Drive 四目录 + MixUp 仓库 pull）。
-
-**本地进度**：`SAVE_STEPS=10`；A2 从 checkpoint-40 续跑中/待跑。
+**本地进度**：**Phase 1（A2+C2）已完成**；C3 按需。
 
 ---
 
@@ -226,14 +216,22 @@ outputs/{strategy}_{profile}_{data}_{seed}/
 
 ### Phase 5：扩规模训练与评估（第 5–7 周）
 
+**评估分层（约定）**：
+
+| 层级 | 指标 | 用途 |
+|------|------|------|
+| 训练期 / 消融筛选 | `reward`、`accuracy_reward`、`format_reward`、`loss`、`kl` + 效率 | Phase 1–4 日常判定 |
+| **总评估（对齐上游）** | **Video-MME、MVBench、MLVU、MMVU**（[TinyLLaVA-Video-R1](https://github.com/ZhangXJ199/TinyLLaVA-Video-R1) `scripts/eval/*.sh`） | Phase 5 对最终权重做正式对比 |
+
 | # | 任务 | 说明 |
 |---|------|------|
 | 5.1 | 10% / 全量 baseline | 视 A100 预算；可等步数公平对比 |
 | 5.2 | 最优 MixUp 配方 | 与 baseline 同数据同档位 |
-| 5.3 | 轻量 eval / 案例分析 | parse rate、样例对比 |
-| 5.4 | 曲线与资源统计 | 写入 `outputs/` 与 `docs/` |
+| 5.3 | 训练期轻量对照 | reward / parse rate / 样例（筛选用） |
+| 5.4 | **上游标准评测** | 对 baseline 与 MixUp 最优权重跑 Video-MME / MVBench / MLVU / MMVU（可先 1–2 项再全开） |
+| 5.5 | 曲线与资源统计 | 写入 `outputs/` 与 `docs/` |
 
-风险：会话中断 → 输出落盘 Drive；`save_strategy` / resume 按预算开启。
+风险：会话中断 → 输出落盘 Drive；`save_strategy` / resume 按预算开启；评测数据体积大，需单独预留 Drive 空间。
 
 ---
 
@@ -255,8 +253,8 @@ outputs/{strategy}_{profile}_{data}_{seed}/
 - [x] **D0**：更新本仓库 README / schedule（Drive 结构 + 双环境）  
 - [x] **D1（Dev）**：Phase 0 本地交付 — `doc/`、`notebooks/`、`mixup/`、`docs/PHASE0_DRIVE_SYNC.md`  
 - [ ] **D1（Colab）**：按 `docs/PHASE0_DRIVE_SYNC.md` 完成 0.2 路径确认 + 0.3 `git clone/pull` 到 Drive  
-- [ ] **D2（A100）**：挂载 Drive → 跑 A2（g8 baseline）  
-- [ ] **D3（A100）**：跑 C2（CPPO p50）→ §对比 → 填 §8 结果表 → 断开  
+- [x] **D2（A100）**：挂载 Drive → 跑 A2（g8 baseline）  
+- [x] **D3（A100）**：跑 C2（CPPO p50）→ 对比 → 见 `docs/PHASE1_REPORT.md` / §8  
 
 ---
 
@@ -304,7 +302,10 @@ outputs/{strategy}_{profile}_{data}_{seed}/
 | 本仓库 README（含 Drive 树） | [README.md](./README.md) |
 | 调研报告 | `doc/…GRPO优化调研报告.pdf` / 实验目录 `优化方案/` |
 | 上游仓库 | https://github.com/ZhangXJ199/TinyLLaVA-Video-R1 |
-| 前期 Colab Notebook | 实验 `工程文件/GRPO测试优化-….ipynb`、`mixup-GRPO优化.ipynb` |
+| Phase 1 报告 | [`docs/PHASE1_REPORT.md`](./docs/PHASE1_REPORT.md) |
+| Phase 1 原始日志 | `docs/phase1运行记录.ipynb` |
+| 上游评测脚本 | TinyLLaVA-Video-R1 `scripts/eval/{videomme,mvbench,mlvu,mmvu}.sh` |
+
 | Drive 项目根 | `MyDrive/MixUpLLaVA-video-r1` |
 | Drive 共享包（官方） | https://drive.google.com/drive/folders/1Qjh19WSLGIeu1NX-UYRYAh4oyFQjCp2m?usp=sharing |
 
@@ -314,26 +315,27 @@ outputs/{strategy}_{profile}_{data}_{seed}/
 
 | 阶段 | 计划开始 | 计划完成 | 实际完成 | 备注 |
 |------|----------|----------|----------|------|
-| Phase 0 | 2026-07-16 | 2026-07-18 | | 文档已切 Colab+Drive |
-| Phase 1 | 2026-07-17 | 2026-07-25 | | A2/C2 g8 |
-| Phase 2 | 2026-07-20 | 2026-07-23 | | 可与 Phase 1 并行 |
+| Phase 0 | 2026-07-16 | 2026-07-18 | 文档侧 ✅ | Drive 勾选可补 |
+| Phase 1 | 2026-07-17 | 2026-07-25 | **2026-07-17** | A2/C2 g8 ✅；见 `docs/PHASE1_REPORT.md` |
+| Phase 2 | 2026-07-20 | 2026-07-23 | | 显存档位 |
 | Phase 3 | 2026-07-25 | 2026-08-15 | | GFPO/NGRPO |
-| Phase 4 | 2026-08-10 | 2026-08-22 | | 消融 |
-| Phase 5 | 2026-08-22 | 2026-09-10 | | 视预算 |
+| Phase 4 | 2026-08-10 | 2026-08-22 | | 消融（过程用 reward） |
+| Phase 5 | 2026-08-22 | 2026-09-10 | | 扩规模 + **上游四基准评测** |
 | Phase 6 | 2026-09-10 | 2026-09-20 | | Release |
 
 ---
 
-## 8. v2 实验结果（待填）
+## 8. v2 实验结果（Phase 1 已填）
 
-主列：`steps/s` 与相对 A2 的 **steps/s 加速**；`train_runtime` 仅参考。
+详见 **`docs/PHASE1_REPORT.md`**。主列：`steps/s` 与相对 A2 加速；另给出去存盘校正值。
 
-| 策略 | 输出目录 | max_steps | steps/s | 相对A2加速(steps/s) | train_runtime(s) | reward |
-|------|----------|-----------|---------|---------------------|------------------|--------|
-| A2 | `grpo_A_g8` | | | — | | |
-| C2 | `grpo_CPPO_g8_p50` | | | | | |
-| C3 | `grpo_CPPO_g8_p75` | | | | | |
+| 策略 | 输出目录 | max_steps | steps/s | 相对A2加速(steps/s) | train_runtime(s) | Cell墙钟 | reward均值 |
+|------|----------|-----------|---------|---------------------|------------------|----------|------------|
+| A2 | `grpo_A_g8` | 50 | 0.008 | — | 6357.3 | 113.0 min | 0.190 |
+| C2 | `grpo_CPPO_g8_p50` | 50 | 0.011 | **+37.5%**（校正吞吐 **+46.9%**） | 4616.4（**−27.4%**） | 83.4 min（**−26.2%**） | 0.321 |
+
+去存盘校正：将步 11/21/31/41/50 耗时替换为非存盘步均值后再比 → 时长加速 **+31.9%**。
 
 ---
 
-*最后更新：2026-07-17 · 维护者：张一鸣 · 主路径：Colab + Google Drive*
+*最后更新：2026-07-17 · Phase 1 ✅ · 维护者：张一鸣 · 主路径：Colab + Google Drive*

@@ -26,17 +26,25 @@ Windows 本机原生 DeepSpeed 训练流程不稳定，**不作为正式训练�
 
 ## 项目状态
 
-🚧 **开发中** — Phase 0（Drive + GitHub 对齐）进行中。
+🚧 **开发中** — **Phase 1（CPPO g8 对比）已完成**；后续进入显存标定 / MixUp 模块与消融。
 
 - [x] 项目目录与文档（GitHub 骨架）
 - [x] 实验计划表（对齐 Drive 成功路径 + 共享链接）
 - [x] `doc/` 调研报告与 CPPO 论文
-- [x] `notebooks/` Colab 入口
+- [x] `notebooks/phase1-cppo-g8.ipynb`（断点续训 + 进度条）
 - [x] `mixup/` CPPO 模块与 trainer patches
-- [ ] Drive 上确认四目录 + clone 本仓库（见 `docs/PHASE0_DRIVE_SYNC.md`）
-- [ ] Colab 基线 / CPPO（g8）对比跑通（Phase 1）
-- [ ] MixUp 模块实现与消融
-- [ ] 全量训练与评估
+- [x] Phase 1：A2 vs C2（g=8）效率对比 — 见 [`docs/PHASE1_REPORT.md`](./docs/PHASE1_REPORT.md)
+- [ ] MixUp 其余模块（GFPO / NGRPO 等）与消融
+- [ ] Phase 5：扩规模训练 + **上游标准评测**（Video-MME / MVBench / MLVU / MMVU）
+
+### 评估口径（约定）
+
+| 阶段 | 用什么判断「好不好」 |
+|------|----------------------|
+| **训练 / 快验 / 消融过程中** | 训练日志中的 `reward`、`accuracy_reward`、`format_reward`、`loss`、`kl`，以及效率指标 `train_runtime` / `train_steps_per_second` |
+| **Phase 5 总评估（对齐上游）** | 按 [TinyLLaVA-Video-R1](https://github.com/ZhangXJ199/TinyLLaVA-Video-R1) 官方流程，对训完权重跑 **Video-MME、MVBench、MLVU、MMVU**（`scripts/eval/*.sh`） |
+
+Phase 1 结论摘要（无中断全程）：C2（CPPO p=0.5）相对 A2，HF runtime **约 −27%**、steps/s **约 +37%**；去掉 checkpoint 存盘尖峰后时长加速约 **32%**；训练 reward 均值未见下降。细节与校正方法见报告。
 
 ---
 
@@ -107,9 +115,9 @@ MixUpLLaVA-video-r1/                       # 共享根 / PROJECT_DIR
     ├── grpo_A_baseline_small/             # v1 基线（历史）
     ├── grpo_B_optimized_small/            # v1 策略 B（历史）
     ├── grpo_CPPO_small/                   # v1 CPPO（历史）
-    ├── grpo_A_g8/                         # v2：g8 GRPO（规划/进行中）
-    ├── grpo_CPPO_g8_p50/
-    └── grpo_CPPO_g8_p75/
+    ├── grpo_A_g8/                         # v2：g8 GRPO baseline（Phase 1 ✅）
+    ├── grpo_CPPO_g8_p50/                  # v2：CPPO p=0.5（Phase 1 ✅）
+    └── grpo_CPPO_g8_p75/                  # v2：CPPO p=0.75（可选）
 ```
 
 ### Notebook 中的路径变量对照
@@ -189,8 +197,10 @@ MixUpLLaVA-Video-R1/
 │   ├── registry.py
 │   ├── project_baseline.py
 │   └── patches/              # trainer 参考副本与应用说明
-├── docs/                     # Phase 清单与实验记录
-│   └── PHASE0_DRIVE_SYNC.md
+├── docs/                     # Phase 清单与实验报告
+│   ├── PHASE0_DRIVE_SYNC.md
+│   ├── PHASE1_REPORT.md      # Phase 1 A2/C2 报告
+│   └── phase1运行记录.ipynb  # 原始 cell 日志备份
 └── .gitignore
 ```
 
