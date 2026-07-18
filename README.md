@@ -31,7 +31,7 @@ Windows 本机原生 DeepSpeed 训练流程不稳定，**不作为正式训练�
 
 ## 项目状态
 
-🚧 **开发中** — **Phase 1–4 已完成**（CPPO 流程 + C1 默认档 + 模块库 + **选择器**）。当前节奏：**先完成整条项目流程与交付物**；正式训练延后，需要时经选择器 / **Phase 6 总控制台**按需开训。最终单一「M5 配方」暂不锁定。
+🚧 **开发中** — **Phase 1–5 已完成**（流程 + 模块库 + 选择器 + **训练期评测**；四基准总评估仅预留）。正式训练 / 大规模基准下载按需进行。最终单一「M5 配方」暂不锁定。
 
 - [x] 项目目录与文档（GitHub 骨架）
 - [x] 实验计划表（对齐 Drive 成功路径 + 共享链接）
@@ -42,15 +42,15 @@ Windows 本机原生 DeepSpeed 训练流程不稳定，**不作为正式训练�
 - [x] Phase 2：默认 C1（`configs/colab_c1.yaml`）+ 可覆盖加载（`mixup.config_loader`）+ [`docs/MEMORY_BENCHMARK_COLAB.md`](./docs/MEMORY_BENCHMARK_COLAB.md)
 - [x] Phase 3：**MixUp 模块库** — 见 [`docs/MIXUP_MODULES.md`](./docs/MIXUP_MODULES.md)；冒烟 `python -m mixup.tests_smoke`
 - [x] Phase 4：**优化方案选择器** — [`notebooks/phase4-selector.ipynb`](./notebooks/phase4-selector.ipynb)；`prepare_training` / 报告模板
-- [ ] Phase 5：**评测流水线**（四基准脚本/模板；实跑可延后）
-- [ ] Phase 6：**总控制台 Notebook** — 调参/选策略 → 基线训练与报告 → 优化方案训练与对比报告
+- [x] Phase 5：**训练期评估**（`mixup/eval_training.py`）+ 四基准可选框架（[`docs/PHASE5_BENCHMARKS.md`](./docs/PHASE5_BENCHMARKS.md)，~600GB 不强制）
+- [ ] Phase 6：**总控制台 Notebook** — 调参/选策略 → 基线训练与**训练期**报告 → 优化方案对比（四基准按需）
 
 ### 评估口径（约定）
 
 | 阶段 | 用什么判断「好不好」 |
 |------|----------------------|
 | **训练期** | `reward`、`accuracy_reward`、`format_reward`、`loss`、`kl` + 效率；可与 Phase1 A2/C2 并表 |
-| **总评估** | 经总控制台对 **基线（如 M1）** 与 **当次优化方案** 跑上游四基准 |
+| **总评估（可选）** | Video-MME / MVBench / MLVU / MMVU（[~600GB](./docs/PHASE5_BENCHMARKS.md)；非默认） |
 
 **开源主叙事**：可组合的 GRPO 实验台；**Phase 6 总控制台**为使用者主入口（汇总前期成果 + 直观调参选策略）。推荐组合见 [`docs/ACCURACY_ORIENTED_OPTIONS.md`](./docs/ACCURACY_ORIENTED_OPTIONS.md)，非强制唯一终点。
 

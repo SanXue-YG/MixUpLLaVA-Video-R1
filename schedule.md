@@ -106,7 +106,7 @@ Phase 1  Colab 基线 / CPPO(g8)    ██████████  Week 1–2 �
 Phase 2  默认档位 + 环境可调参   ██████████  Week 2 ✅ 默认=C1；可覆盖加载
 Phase 3  MixUp 模块库（可扩展）    ██████████  Week 2–4 ✅ 调研可嵌入方案已注册
 Phase 4  优化方案选择器（能力）    ██████████  Week 4–5 ✅ 可勾选；开训可延后
-Phase 5  评测流水线（模板/脚本）   ██████████  Week 5–7 四基准协议；实跑可延后
+Phase 5  评测流水线（训练期为主） ██████████  Week 5–7 ✅ 总评估可选预留
 Phase 6  总控制台 Notebook         ██████████  Week 7–8 调参→基线→优化对比→报告
 ```
 
@@ -308,32 +308,29 @@ Phase1 的 A2（纯 GRPO）/ C2（仅 CPPO）作历史/消融对照，见 `prese
 
 ---
 
-### Phase 5：评测流水线（第 5–7 周）——协议与模板优先，实跑可延后
+### Phase 5：评测流水线（第 5–7 周）——训练期为主，总评估可选
 
 **评估分层**：
 
-| 层级 | 指标 | 用途 |
-|------|------|------|
-| 训练期 | `reward` / `accuracy_*` / `format_*` / `loss` / `kl` + runtime / steps/s | 快筛；对照 A2/C2/M1 |
-| **总评估** | **Video-MME、MVBench、MLVU、MMVU** | 基线 vs 优化方案正式对比（由总控制台触发） |
+| 层级 | 指标 | 用途 | Phase 5 态度 |
+|------|------|------|----------------|
+| **训练期（主路径）** | `reward` / `accuracy_*` / `format_*` / `loss` / `kl` + runtime / steps/s | 快筛；对照 A2/C2/M1 | ✅ **必做交付** |
+| **总评估（可选）** | Video-MME、MVBench、MLVU、MMVU | 与上游同协议的正式对比 | ⬜ **仅预留框架**；数据约 **~600GB**，小规模不强制 |
 
-**本阶段重点**：评测脚本、数据准备说明、报告模板就位，并暴露给 Phase 6 调用。**对已有权重的实跑评测可延后**到「需要出数」时。
+**背景**：按 [TinyLLaVA-Video-R1](https://github.com/ZhangXJ199/TinyLLaVA-Video-R1) README 下载四基准体积巨大，不适合默认走 Drive/Colab 快验。故 Phase 5 与「能力优先、实跑可延后」一致：**先完成训练期评估流水线**；总评估由实验者在空间充足时自行下载再跑。
 
-| # | 任务 | 说明 |
-|---|------|------|
-| 5.1 | 评测数据与上游 `scripts/eval/*.sh` 对齐说明 | 同 TinyLLaVA-Video-R1 |
-| 5.2 | **评测入口封装** | 输入 checkpoint → 跑四基准 → 落盘分数 JSON/表 |
-| 5.3 | 报告模板 | `docs/PHASE5_EVAL_REPORT.md`：基线列 + 方案列 + Δ |
-| 5.4 | （按需）实评 M1 / 所选组合 | **非门禁**；有权重且需要结论时再跑 |
-| 5.5 | （可选）附录 Phase1 | A2/C2 训练期效率对照 |
+| # | 任务 | 交付物 | 状态 |
+|---|------|--------|------|
+| 5.1 | **训练期评估入口** | `mixup/eval_training.py`：读 `trainer_state`/日志 → JSON + MD | ✅ |
+| 5.2 | 训练期报告模板 | `docs/PHASE5_EVAL_REPORT.md`（A 节为主） | ✅ |
+| 5.3 | **总评估框架（可选）** | `scripts/eval/*` + `mixup/eval_benchmarks.py` + `docs/PHASE5_BENCHMARKS.md` | ✅ 预留 |
+| 5.4 | 上游脚本对齐说明 | 同 TinyLLaVA `scripts/eval/*.sh`；下载需人工 | ✅ |
+| 5.5 | （按需）实跑四基准 | **非门禁**；确认磁盘后再 `confirm_large_download` | ⬜ 按需 |
+| 5.6 | （可选）附录 Phase1 | A2/C2 训练期效率对照 | ✅ 模板内 |
 
-#### 预计成果（Phase 5）
+**验收**：对任意 `outputs/{run_id}/` 可生成训练期报告；总评估脚本可 dry-run / 检查数据是否就位；**不要求**本机已有四基准数据。
 
-1. **可交付物**：可调用的评测流水线 + 空白/示例报告模板。  
-2. **成功标准**：总控制台能一键「评当前 run」；协议写清（同档超参、同评测脚本）。  
-3. **不预设**必须打败某一固定 M5。
-
-风险：评测数据体积大——实跑时优先 **基线 + 1～2 个候选**。
+**本地进度**：**Phase 5 已完成（训练期流水线 + 总评估预留）**。
 
 ---
 
@@ -352,11 +349,11 @@ Phase1 的 A2（纯 GRPO）/ C2（仅 CPPO）作历史/消融对照，见 `prese
         ↓
 ③ 【基线】按当前参数训 M1（或指定基线）→ 训练期指标
         ↓
-④ 【基线评测】跑四基准（或训练期快报）→ 生成基线测试报告
+④ 【基线评测】**默认训练期报告**；四基准总评估仅当数据已下载时可选
         ↓
 ⑤ 【优化方案】勾选其它模块组合 → 同参再训
         ↓
-⑥ 【对比】相对基线生成对比报告（效率 + reward + 可选四基准 Δ）
+⑥ 【对比】相对基线：**训练期**效率/reward（+ 可选四基准 Δ）
 ```
 
 | # | 任务 | 交付物 | 说明 |
@@ -394,7 +391,7 @@ Phase1 的 A2（纯 GRPO）/ C2（仅 CPPO）作历史/消融对照，见 `prese
 - [x] **Phase 2**：默认 C1 → `configs/colab_c1.yaml` + `mixup.config_loader` + `docs/MEMORY_BENCHMARK_COLAB.md`
 - [x] **Phase 3**：MixUp **模块库**（B/CPPO/GFPO/NGRPO/MO-GRPO… + registry；见 `docs/MIXUP_MODULES.md`）
 - [x] **Phase 4**：**优化方案选择器**（`mixup/selector.py` + `notebooks/phase4-selector.ipynb`）；开训可延后
-- [ ] **Phase 5**：**评测流水线**（脚本/模板）；实跑可延后
+- [x] **Phase 5**：**训练期评估流水线** + 四基准框架预留（~600GB，不强制）
 - [ ] **Phase 6**：**总控制台 Notebook**（调参 → 基线报告 → 优化对比报告）+ Release
 
 ---
@@ -451,6 +448,7 @@ Phase1 的 A2（纯 GRPO）/ C2（仅 CPPO）作历史/消融对照，见 `prese
 | **Phase 2 默认档 / 改参** | [`configs/colab_c1.yaml`](./configs/colab_c1.yaml) · [`docs/MEMORY_BENCHMARK_COLAB.md`](./docs/MEMORY_BENCHMARK_COLAB.md) |
 | **Phase 3 模块库** | [`docs/MIXUP_MODULES.md`](./docs/MIXUP_MODULES.md) · [`doc/`](./doc/README.md) 原论文 |
 | **Phase 4 选择器** | [`notebooks/phase4-selector.ipynb`](./notebooks/phase4-selector.ipynb) · [`docs/PHASE4_REPORT.md`](./docs/PHASE4_REPORT.md) |
+| **Phase 5 评测** | [`docs/PHASE5_EVAL_REPORT.md`](./docs/PHASE5_EVAL_REPORT.md) · [`docs/PHASE5_BENCHMARKS.md`](./docs/PHASE5_BENCHMARKS.md)（总评估可选） |
 | **准确率向备选方案** | [`docs/ACCURACY_ORIENTED_OPTIONS.md`](./docs/ACCURACY_ORIENTED_OPTIONS.md) |
 | 上游评测脚本 | TinyLLaVA-Video-R1 `scripts/eval/{videomme,mvbench,mlvu,mmvu}.sh` |
 
@@ -468,7 +466,7 @@ Phase1 的 A2（纯 GRPO）/ C2（仅 CPPO）作历史/消融对照，见 `prese
 | Phase 2 | 2026-07-18 | 2026-07-23 | **2026-07-18** | 默认 C1 + loader + 换环境清单 |
 | Phase 3 | 2026-07-20 | 2026-08-10 | **2026-07-18** | 模块库 + doc 原论文 + smoke ✅ |
 | Phase 4 | 2026-08-05 | 2026-08-22 | **2026-07-18** | 选择器能力 ✅；开训非门禁 |
-| Phase 5 | 2026-08-20 | 2026-09-10 | | **评测流水线**（实跑可延后） |
+| Phase 5 | 2026-08-20 | 2026-09-10 | **2026-07-18** | 训练期评估 ✅；四基准可选预留 |
 | Phase 6 | 2026-09-10 | 2026-09-20 | | **总控制台** + Release |
 
 ---
@@ -486,4 +484,4 @@ Phase1 的 A2（纯 GRPO）/ C2（仅 CPPO）作历史/消融对照，见 `prese
 
 ---
 
-*最后更新：2026-07-18 · Phase 1–4 ✅ · 后续：评测流水线 → **总控制台***
+*最后更新：2026-07-18 · Phase 1–5 ✅ · 后续：**总控制台***

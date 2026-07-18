@@ -7,6 +7,13 @@ from .config_loader import (
     load_tier_config,
     notebook_constants,
 )
+from .eval_benchmarks import build_benchmark_plan, run_benchmark
+from .eval_training import (
+    collect_training_metrics,
+    compare_training_metrics,
+    evaluate_run,
+    write_training_eval_report,
+)
 from .presets import PRESET_ALIASES, list_presets, load_preset
 from .registry import (
     apply_registered,
@@ -60,4 +67,10 @@ __all__ = [
     "PRESET_ALIASES",
     "load_preset",
     "list_presets",
+    "collect_training_metrics",
+    "compare_training_metrics",
+    "evaluate_run",
+    "write_training_eval_report",
+    "build_benchmark_plan",
+    "run_benchmark",
 ]

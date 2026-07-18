@@ -144,8 +144,68 @@ def _test_selector() -> None:
     print("prepare_training dry_run OK", plan2.enabled)
 
 
+def _test_eval_training() -> None:
+    import json
+    import tempfile
+    from pathlib import Path
+    from mixup.eval_training import collect_training_metrics, evaluate_run, compare_training_metrics
+    from mixup.eval_benchmarks import build_benchmark_plan, run_benchmark, SPACE_WARNING
+
+    with tempfile.TemporaryDirectory() as td:
+        td = Path(td)
+        run_a = td / "run_a"
+        run_b = td / "run_b"
+        run_a.mkdir()
+        run_b.mkdir()
+        hist = [
+            {"loss": 0.1, "reward": 0.2, "rewards/accuracy_reward": 0.3, "kl": 0.01},
+            {"loss": 0.05, "reward": 0.4, "rewards/accuracy_reward": 0.5, "kl": 0.02},
+            {"train_runtime": 100.0, "train_steps_per_second": 0.01, "train_loss": 0.05},
+        ]
+        (run_a / "trainer_state.json").write_text(
+            json.dumps({"log_history": hist}), encoding="utf-8"
+        )
+        hist_b = [
+            {"loss": 0.08, "reward": 0.5, "rewards/accuracy_reward": 0.6, "kl": 0.01},
+            {"loss": 0.04, "reward": 0.55, "rewards/accuracy_reward": 0.65, "kl": 0.015},
+            {"train_runtime": 80.0, "train_steps_per_second": 0.012, "train_loss": 0.04},
+        ]
+        (run_b / "trainer_state.json").write_text(
+            json.dumps({"log_history": hist_b}), encoding="utf-8"
+        )
+        m = evaluate_run(run_b, baseline_dir=run_a)
+        assert m.summary.get("train_steps_per_second") == 0.012
+        assert (run_b / "training_eval_report.md").is_file()
+        print("eval_training OK", m.means.get("reward"))
+
+    plan = build_benchmark_plan(
+        eval_root=td if "td" in dir() else tempfile.mkdtemp(),
+        model_path="/tmp/model",
+        tinyllava_repo="/tmp/repo",
+    )
+    # use fresh temp for plan
+    with tempfile.TemporaryDirectory() as ed:
+        plan = build_benchmark_plan(
+            eval_root=ed, model_path="/tmp/model", tinyllava_repo="/tmp/repo"
+        )
+        assert not plan.any_ready()
+        r = run_benchmark(
+            "videomme",
+            mixup_repo=Path(__file__).resolve().parents[1],
+            tinyllava_repo="/tmp/repo",
+            model_path="/tmp/model",
+            eval_root=ed,
+            dry_run=True,
+        )
+        assert r["status"] == "dry_run"
+        assert "600" in SPACE_WARNING or "GB" in SPACE_WARNING
+        print("eval_benchmarks dry_run OK")
+
+
 if __name__ == "__main__":
     main()
     from pathlib import Path
     _test_selector()
     print("SELECTOR TESTS PASSED")
+    _test_eval_training()
+    print("EVAL TESTS PASSED")
