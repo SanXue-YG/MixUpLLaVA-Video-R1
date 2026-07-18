@@ -1,9 +1,31 @@
-# notebooks/ — Phase 1 Colab 入口
+# notebooks/ — Colab 入口
 
 | Notebook | 用途 |
 |----------|------|
 | **`phase1-cppo-g8.ipynb`** | **Phase 1 主入口**：A2 / C2 /（可选）C3，g=8，默认快验 50 step |
 | `mixup-GRPO优化.ipynb` | 与上相同内容（兼容旧文件名） |
+
+## Phase 2：默认档位（推荐）
+
+后续实验请以仓库 **`configs/colab_c1.yaml`** 为默认（与 Phase1 常量对齐）。换环境可覆盖，勿与 Phase1 默认档混比。
+
+```python
+from pathlib import Path
+import sys
+MIXUP_REPO = Path("/content/drive/MyDrive/MixUpLLaVA-video-r1/repo/MixUpLLaVA-Video-R1")
+sys.path.insert(0, str(MIXUP_REPO))
+
+from mixup.config_loader import load_tier_config, apply_config_to_notebook
+
+cfg = load_tier_config(
+    MIXUP_REPO / "configs/colab_c1.yaml",
+    overrides={},  # 例: {"max_steps": 20} 或 {"num_generations": 4}
+)
+apply_config_to_notebook(cfg, globals())
+```
+
+- 档位说明：[`configs/README.md`](../configs/README.md)  
+- 换环境清单 / Phase1 吞吐：[`docs/MEMORY_BENCHMARK_COLAB.md`](../docs/MEMORY_BENCHMARK_COLAB.md)
 
 ## Phase 1 流程摘要
 
@@ -22,4 +44,4 @@
 
 共享包：https://drive.google.com/drive/folders/1Qjh19WSLGIeu1NX-UYRYAh4oyFQjCp2m?usp=sharing  
 
-计划详见仓库根目录 `schedule.md` Phase 1。
+计划详见仓库根目录 `schedule.md`。

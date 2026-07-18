@@ -7,7 +7,7 @@ Windows 本机原生 DeepSpeed 训练流程不稳定，**不作为正式训练�
 
 ## 背景
 
-- 原始工作：[TinyLLaVA-Video-R1](https://arxiv.org/abs/2504.09641)（[GitHub](https://github.com/ZhangXJ199/TinyLLaVA-Video-R1)）
+- 项目基础：[TinyLLaVA-Video-R1](https://arxiv.org/abs/2504.09641)（[GitHub](https://github.com/ZhangXJ199/TinyLLaVA-Video-R1)）
 - 优化方法论：`doc/基于Video-R1的视频交通异常行为检测项目中的GRPO优化调研报告.pdf`
 - 前期 CPPO 验证：Colab + Drive，50 条子集复现（加速约 0.7%，reward 与 baseline 一致）
 - GitHub：https://github.com/SanXue-YG/MixUpLLaVA-Video-R1
@@ -15,7 +15,7 @@ Windows 本机原生 DeepSpeed 训练流程不稳定，**不作为正式训练�
 
 ## MixUp 优化思路
 
-将调研中的 GRPO 改进做成**可开关模块**（CPPO / GFPO / NGRPO / MO-GRPO / 项目基线 B 等），经 **选择器** 组合训练；Phase1 已用 CPPO 打通 Colab 流程，后续算法复用同一管道。推荐组合见 [`docs/ACCURACY_ORIENTED_OPTIONS.md`](./docs/ACCURACY_ORIENTED_OPTIONS.md)。
+将调研中的 GRPO 改进做成**可开关模块**，经 **选择器** 组合；最终由 **Phase 6 总控制台 Notebook** 统一调参、训基线、训优化方案并出对比报告。正式训练按需触发，不阻塞流程建设。推荐组合见 [`docs/ACCURACY_ORIENTED_OPTIONS.md`](./docs/ACCURACY_ORIENTED_OPTIONS.md)。
 
 | 模块 | 作用 |
 |------|------|
@@ -29,7 +29,7 @@ Windows 本机原生 DeepSpeed 训练流程不稳定，**不作为正式训练�
 
 ## 项目状态
 
-🚧 **开发中** — **Phase 1（CPPO g8）已完成并打通可复用训练流程**；后续：**模块库（Phase 3）→ 优化方案选择器 + M1 基线（Phase 4）→ 评测所选方案（Phase 5）**。最终单一「M5 配方」暂不锁定。
+🚧 **开发中** — **Phase 1–2 已完成**（CPPO 流程 + 默认档 C1）。当前节奏：**先完成整条项目流程与交付物**；正式训练延后，需要时经 **Phase 6 总控制台**（调用 Phase 4 选择器）按需开训。最终单一「M5 配方」暂不锁定。
 
 - [x] 项目目录与文档（GitHub 骨架）
 - [x] 实验计划表（对齐 Drive 成功路径 + 共享链接）
@@ -37,19 +37,20 @@ Windows 本机原生 DeepSpeed 训练流程不稳定，**不作为正式训练�
 - [x] `notebooks/phase1-cppo-g8.ipynb`（断点续训 + 进度条）
 - [x] `mixup/` CPPO 模块与 trainer patches
 - [x] Phase 1：A2 vs C2（g=8）效率对比 — 见 [`docs/PHASE1_REPORT.md`](./docs/PHASE1_REPORT.md)
-- [ ] Phase 2：默认 C1（=Phase1 已验证档）；其它部署环境可灵活改参
+- [x] Phase 2：默认 C1（`configs/colab_c1.yaml`）+ 可覆盖加载（`mixup.config_loader`）+ [`docs/MEMORY_BENCHMARK_COLAB.md`](./docs/MEMORY_BENCHMARK_COLAB.md)
 - [ ] Phase 3：**MixUp 模块库**（尽量复现调研可嵌入方案，可扩展）
-- [ ] Phase 4：**优化方案选择器** + 默认基线 **M1（B）**；用户自选组合训练
-- [ ] Phase 5：对 **M1 + 所选组合** 跑 **Video-MME、MVBench、MLVU、MMVU**
+- [ ] Phase 4：**优化方案选择器**（能力交付；完整开训可延后）
+- [ ] Phase 5：**评测流水线**（四基准脚本/模板；实跑可延后）
+- [ ] Phase 6：**总控制台 Notebook** — 调参/选策略 → 基线训练与报告 → 优化方案训练与对比报告
 
 ### 评估口径（约定）
 
 | 阶段 | 用什么判断「好不好」 |
 |------|----------------------|
-| **训练 / Phase 1–4** | `reward`、`accuracy_reward`、`format_reward`、`loss`、`kl` + 效率；可与 Phase1 A2/C2 并表 |
-| **Phase 5 总评估** | 对 **M1** 与 **当次所选开关组合** 跑上游四基准 |
+| **训练期** | `reward`、`accuracy_reward`、`format_reward`、`loss`、`kl` + 效率；可与 Phase1 A2/C2 并表 |
+| **总评估** | 经总控制台对 **基线（如 M1）** 与 **当次优化方案** 跑上游四基准 |
 
-**开源主叙事**：可组合的 GRPO 优化实验台（Phase1 流程 + Phase3 模块 + Phase4 选择器）；推荐组合见 [`docs/ACCURACY_ORIENTED_OPTIONS.md`](./docs/ACCURACY_ORIENTED_OPTIONS.md)，非强制唯一终点。
+**开源主叙事**：可组合的 GRPO 实验台；**Phase 6 总控制台**为使用者主入口（汇总前期成果 + 直观调参选策略）。推荐组合见 [`docs/ACCURACY_ORIENTED_OPTIONS.md`](./docs/ACCURACY_ORIENTED_OPTIONS.md)，非强制唯一终点。
 
 Phase 1 结论摘要：C2 相对 A2，runtime **约 −27%**、steps/s **约 +37%**（去存盘校正时长约 **−32%**）；训练 reward 未见下降。详见报告。
 
@@ -197,9 +198,14 @@ SMALL_JSONL = f"{PROJECT_DIR}/data/dataset/nextqa_small50.jsonl"
 MixUpLLaVA-Video-R1/
 ├── README.md
 ├── schedule.md
+├── configs/                  # Phase 2 默认档位（C1 / C0）
+│   ├── colab_c1.yaml         # 推荐默认（= Phase1）
+│   ├── colab_c0.yaml         # OOM / 小显存
+│   └── README.md
 ├── doc/                      # 调研报告 + CPPO 论文 PDF
 ├── notebooks/                # Colab 实验 Notebook
 ├── mixup/                    # 策略模块
+│   ├── config_loader.py      # 加载 yaml + Notebook 覆盖
 │   ├── cppo.py
 │   ├── registry.py
 │   ├── project_baseline.py
@@ -207,6 +213,7 @@ MixUpLLaVA-Video-R1/
 ├── docs/                     # Phase 清单与实验报告
 │   ├── PHASE0_DRIVE_SYNC.md
 │   ├── PHASE1_REPORT.md      # Phase 1 A2/C2 报告
+│   ├── MEMORY_BENCHMARK_COLAB.md  # 换环境改参 + Phase1 吞吐
 │   ├── ACCURACY_ORIENTED_OPTIONS.md  # 相对 M1 的准确率向备选配方
 │   └── phase1运行记录.ipynb  # 原始 cell 日志备份
 └── .gitignore

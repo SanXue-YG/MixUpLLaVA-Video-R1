@@ -1,0 +1,70 @@
+# MixUpLLaVA-Video-R1 — 默认档位 C1（= Phase 1 已验证）
+#
+# 用途：后续 Notebook / 选择器 / 总控制台的推荐起点。
+# 与 Phase1 A2/C2 并表对比时，请保持本档不变；改参须单独成组。
+#
+# 覆盖示例（Python）：
+#   from mixup.config_loader import load_tier_config
+#   cfg = load_tier_config("configs/colab_c1.yaml", overrides={"max_steps": 20})
+
+tier: C1
+description: "Phase1 verified default on Colab A100-80GB; recommended starting point"
+
+# --- 路径（Colab + Drive；可按本机改）---
+paths:
+  project_dir: /content/drive/MyDrive/MixUpLLaVA-video-r1
+  data_root: /content/drive/MyDrive/MixUpLLaVA-video-r1/data/dataset/
+  video_folder: /content/drive/MyDrive/MixUpLLaVA-video-r1/data/dataset/nextqa_small50.jsonl
+  ckpt: /content/drive/MyDrive/MixUpLLaVA-video-r1/checkpoints/coldstart
+  out_base: /content/drive/MyDrive/MixUpLLaVA-video-r1/outputs
+  dataset_name: nextqa_small50.jsonl
+
+# --- GRPO / 数据侧（与 phase1-cppo-g8.ipynb 对齐）---
+training:
+  num_generations: 8          # NUM_GENERATIONS；OOM → 4（见 C0）
+  num_frames: 2               # 脚本 --num_frames
+  num_queries: 32
+  model_max_length: 256
+  num_frame_trainer: 8        # trainer 内采样帧数
+  max_steps: 50               # 快验；冒烟可 10–20；严肃对比可加长
+  learning_rate: 5.0e-6
+  weight_decay: 0.0
+  warmup_ratio: 0.03
+  per_device_train_batch_size: 1
+  gradient_accumulation_steps: 1
+  num_train_epochs: 1
+  bf16: true
+  gradient_checkpointing: true
+  attn_implementation: flash_attention_2
+
+# --- 存盘 / 日志 / 续训 ---
+checkpointing:
+  save_steps: 10
+  save_total_limit: 1
+  logging_steps: 1
+  enable_resume: true
+
+# --- DeepSpeed（Phase1：ZeRO-3 + 参数 CPU offload，优化器不 offload）---
+deepspeed:
+  zero_stage: 3
+  offload_param: cpu
+  offload_optimizer: none
+  bf16_enabled: auto
+
+# --- MixUp 模块默认（策略开关；与档位超参分开记）---
+# Phase1 A2：cppo_pruning_rate=0；C2：0.5
+mixup:
+  project_baseline: false     # M1 默认 True；Phase1 对照时保持 false
+  cppo: false
+  cppo_pruning_rate: 0.5      # 启用 CPPO 时用；A2 对照请置 0
+  gfpo: false
+  gfpo_top_k: 4
+  ngrpo: false
+  mo_grpo: false
+
+# --- 换环境提示（非强制）---
+notes:
+  - "同表可比：与 Phase1 A2/C2 并表时勿改本档核心超参。"
+  - "OOM：改用 configs/colab_c0.yaml，或 overrides num_generations=4。"
+  - "扩规模换数据 / 升 frames·queries·max_length：单独 run_id，勿与 C1 默认档混比。"
+  - "详见 docs/MEMORY_BENCHMARK_COLAB.md"

@@ -1,0 +1,15 @@
+# MixUpLLaVA-Video-R1 — 档位 C0（调试 / 小显存兜底）
+#
+# 相对 C1：num_generations 8→4。勿与 Phase1 默认档混比。
+
+tier: C0
+description: "Debug / low-VRAM fallback; do not mix-compare with Phase1 C1 table"
+extends: colab_c1.yaml
+
+training:
+  num_generations: 4
+  max_steps: 20               # 冒烟默认更短；可覆盖
+
+notes:
+  - "用于 OOM 排查或非 A100 小显存冒烟。"
+  - "报告须标注档位 C0，不可与 Phase1 A2/C2（C1）直接并表。"

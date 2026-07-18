@@ -55,8 +55,11 @@
 | 阶段 | 做什么 |
 |------|--------|
 | **Phase 3** | 模块库：尽量复现调研报告可嵌入方法，统一注册、可扩展 |
-| **Phase 4** | **优化方案选择器** + 默认基线 **M1（仅 B）**；用户按目标勾选模块组合训练（流程复用 Phase1 CPPO 打通路径） |
-| **Phase 5** | 对**用户所选**（及推荐对照）组合做训练期指标 + 上游四基准评测 |
+| **Phase 4** | **优化方案选择器**（能力交付）：勾选模块 / 填超参 / 生成 run 配置；**不强制立刻开训** |
+| **Phase 5** | **评测流水线**（脚本 + 报告模板）：协议对齐上游四基准；**实跑可延后** |
+| **Phase 6** | **总控制台 Notebook**：汇总前期成果；用户直观调参 + 选策略 → 先训基线出报告 → 再训优化方案并对比 |
+
+**执行节奏（重要）**：当前优先**跑通并完成整条项目流程与交付物**（配置、模块库、选择器、评测模板、总控制台）。**大规模 / 正式训练不卡进度**——需要训时，借助 Phase 4 选择能力 + Phase 6 总控制台按需启动。
 
 配方备选与准确率向建议见 [`docs/ACCURACY_ORIENTED_OPTIONS.md`](./docs/ACCURACY_ORIENTED_OPTIONS.md)（如曾议的 B+CPPO+NGRPO+GFPO / M5q 等，均为**可选预设**，非强制最终方案）。
 
@@ -100,11 +103,11 @@ OUT_BASE    = {PROJECT_DIR}/outputs
 ```
 Phase 0  Drive/仓库对齐 + 文档     ████████░░  Week 1（文档 ✅；Drive 勾选可补）
 Phase 1  Colab 基线 / CPPO(g8)    ██████████  Week 1–2 ✅ 打通可复用训练流程
-Phase 2  默认档位 + 环境可调参   ████████░░  Week 2（默认=Phase1；部署可改）
+Phase 2  默认档位 + 环境可调参   ██████████  Week 2 ✅ 默认=C1；可覆盖加载
 Phase 3  MixUp 模块库（可扩展）    ████████░░  Week 2–4 复现调研可嵌入方案
-Phase 4  优化方案选择器 + M1 基线  ████████░░  Week 4–5 用户自选组合训练
-Phase 5  评测所选方案              ██████████  Week 5–7 四基准 + 训练期指标
-Phase 6  开源文档与 Release        ██████████  Week 7–8 主打「可组合 GRPO 实验台」
+Phase 4  优化方案选择器（能力）    ████████░░  Week 4–5 可勾选；开训可延后
+Phase 5  评测流水线（模板/脚本）   ██████████  Week 5–7 四基准协议；实跑可延后
+Phase 6  总控制台 Notebook         ██████████  Week 7–8 调参→基线→优化对比→报告
 ```
 
 ### 跨阶段对比约定（重要）
@@ -229,10 +232,12 @@ Phase 6  开源文档与 Release        ██████████  Week 7�
 
 | # | 任务 | 交付物 | 状态 |
 |---|------|--------|------|
-| 2.1 | 将 Phase1 默认超参写入 `configs/colab_c1.yaml`（与 Notebook 常量对齐） | `configs/colab_c1.yaml` | ⬜ |
-| 2.2 | 文档约定：默认 = C1；其它环境可改参；改档须单独成组、不可与 Phase1 默认档混比 | 本文件 + README | ⬜ |
-| 2.3 | （可选）简短「换环境改参清单」+ Phase1 实测显存 / steps/s | `docs/MEMORY_BENCHMARK_COLAB.md` | ⬜ 可选 |
-| 2.4 | （可选）Notebook / 选择器入口暴露可覆盖字段（覆盖 yaml 默认） | Notebook 或 `configs/` 注释 | ⬜ 可选 |
+| 2.1 | 将 Phase1 默认超参写入 `configs/colab_c1.yaml`（与 Notebook 常量对齐） | `configs/colab_c1.yaml`（另附 `colab_c0.yaml`） | ✅ |
+| 2.2 | 文档约定：默认 = C1；其它环境可改参；改档须单独成组、不可与 Phase1 默认档混比 | 本文件 + README + `configs/README.md` | ✅ |
+| 2.3 | 简短「换环境改参清单」+ Phase1 实测吞吐 | `docs/MEMORY_BENCHMARK_COLAB.md` | ✅ |
+| 2.4 | Notebook / 选择器入口暴露可覆盖字段（覆盖 yaml 默认） | `mixup/config_loader.py` | ✅ |
+
+**本地进度**：**Phase 2 已完成**（默认档固化 + 可覆盖加载；无需再开训）。
 
 ---
 
@@ -277,19 +282,21 @@ mixup/
 
 ---
 
-### Phase 4：优化方案选择器 + M1 基线训练（第 4–5 周）
+### Phase 4：优化方案选择器（第 4–5 周）——能力优先，开训可延后
 
 **定位变更**：不再锁定「唯一最终配方 M5」。开源主成果改为 **可组合的 GRPO 优化实验台**：用户按目标自选模块组合，沿 **Phase1 已打通的 Colab+Drive 流程**（默认 C1，部署环境可改参）快速试其它算法。
 
-**默认基线**：**M1 = 仅开启项目基线增强 B**（对应项目组原始设计方向）。Phase1 的 A2（纯 GRPO）/ C2（仅 CPPO）继续作为历史对照，不必重跑。
+**默认基线定义**：**M1 = 仅开启项目基线增强 B**。Phase1 的 A2 / C2 作历史对照，不必重跑。
+
+**本阶段重点**：把「选什么、怎么配」做成可调用能力（供 Phase 6 总控制台接入）。**正式训 M1 / 自选组合不强制在本阶段完成**——需要时再通过总控制台启动。
 
 | # | 任务 | 说明 |
 |---|------|------|
-| 4.1 | **选择器 UI/配置** | Notebook 或 YAML：勾选模块 + 填超参（如 `cppo_pruning_rate`、GFPO `k`）；生成 `run_id` 与 `outputs/{run_id}_c1_*/` |
-| 4.2 | **预设（可选，非强制）** | 如 `speed`（B?+CPPO）、`stable`（B+NGRPO）、`quality`（B+NGRPO+MO-GRPO）等，见 `ACCURACY_ORIENTED_OPTIONS.md`；用户可改 |
-| 4.3 | 训 **M1** | 选择器默认配置跑通一遍，作为组内基线权重 |
-| 4.4 | 训 **≥1 组自选组合** | 演示「换开关即可训练」；组合由实习目标当时决定，写入当次报告 |
-| 4.5 | 报告模板 | `docs/PHASE4_REPORT.md`：记录所选开关、与 A2/C2/M1 的训练期对照 |
+| 4.1 | **选择器 UI/配置** | Notebook 单元或 YAML：勾选模块 + 填超参；生成 `run_id`、配置快照、`outputs/` 路径约定 |
+| 4.2 | **预设（可选）** | `speed` / `stable` / `quality` 等，见 `ACCURACY_ORIENTED_OPTIONS.md` |
+| 4.3 | **训练入口封装** | `apply_mixup` → 复用 Phase1 deepspeed 流程；冒烟可选（短 `max_steps`），完整训延后 |
+| 4.4 | 报告模板 | `docs/PHASE4_REPORT.md`（或由 Phase6 统一生成）：开关快照、训练期对照表头 |
+| 4.5 | （按需）训 M1 / 自选 | **非门禁**；有项目需要或验收演示时再跑 |
 
 **选择器示意（Notebook）**：
 
@@ -300,65 +307,106 @@ MIXUP = dict(
     gfpo=False, gfpo_top_k=4,
     ngrpo=False,
     mo_grpo=False,
-    # dagrpo=False, gmpo=False, ...
 )
-# → apply_mixup(MIXUP) → run_training(...)  # 同 Phase1 流程
+# → apply_mixup(MIXUP) → run_training(...)  # 同 Phase1；Phase6 总控调用
 ```
 
 #### 预计成果（Phase 4）
 
-1. **可交付物**：`mixup` 选择器（Notebook/配置）+ **M1** 基线 run + 至少一套「自选组合」run；配置快照随 `outputs/` 落盘。  
-2. **产品叙事**：他人 / 未来的自己无需重写训练脚本，即可在默认流程上开关调研中的算法做对比；换部署环境时可改超参再试。  
-3. **成功标准**：从改 YAML/单元开关到开训 ≤ 既有 Phase1 复杂度；错误开关有明确报错；M1 可复现。
+1. **可交付物**：选择器（配置/API）+ 训练入口可被总控制台调用；错误开关有明确报错。  
+2. **成功标准**：改开关即可生成合法 run 配置；与 Phase1 流程对接清晰。  
+3. **不阻塞**：没有完整 50-step M1 权重也可进入 Phase 5/6 的流程建设。
 
 ---
 
-### Phase 5：评测所选优化方案（第 5–7 周）
+### Phase 5：评测流水线（第 5–7 周）——协议与模板优先，实跑可延后
 
 **评估分层**：
 
 | 层级 | 指标 | 用途 |
 |------|------|------|
-| 训练期 | `reward` / `accuracy_*` / `format_*` / `loss` / `kl` + runtime / steps/s | 快筛组合；对照 A2/C2/M1 |
-| **总评估** | **Video-MME、MVBench、MLVU、MMVU** | 对 **M1** 与 **Phase4 选定的目标组合**（可多组）正式对比 |
+| 训练期 | `reward` / `accuracy_*` / `format_*` / `loss` / `kl` + runtime / steps/s | 快筛；对照 A2/C2/M1 |
+| **总评估** | **Video-MME、MVBench、MLVU、MMVU** | 基线 vs 优化方案正式对比（由总控制台触发） |
+
+**本阶段重点**：评测脚本、数据准备说明、报告模板就位，并暴露给 Phase 6 调用。**对已有权重的实跑评测可延后**到「需要出数」时。
 
 | # | 任务 | 说明 |
 |---|------|------|
-| 5.1 | 准备评测数据与上游 `scripts/eval/*.sh` | 同 TinyLLaVA-Video-R1 流程 |
-| 5.2 | 评测 **M1** | 组内基线分数 |
-| 5.3 | 评测 **所选组合** | 与 M1 同协议；若多组自选则分别评并制表 |
-| 5.4 | （可选）附录 Phase1 | A2/C2 有最终权重则可附；否则仅训练期对照 |
-| 5.5 | 总评报告 | `docs/PHASE5_EVAL_REPORT.md`：写清「本次评了哪些开关组合、为何选」 |
+| 5.1 | 评测数据与上游 `scripts/eval/*.sh` 对齐说明 | 同 TinyLLaVA-Video-R1 |
+| 5.2 | **评测入口封装** | 输入 checkpoint → 跑四基准 → 落盘分数 JSON/表 |
+| 5.3 | 报告模板 | `docs/PHASE5_EVAL_REPORT.md`：基线列 + 方案列 + Δ |
+| 5.4 | （按需）实评 M1 / 所选组合 | **非门禁**；有权重且需要结论时再跑 |
+| 5.5 | （可选）附录 Phase1 | A2/C2 训练期效率对照 |
 
 #### 预计成果（Phase 5）
 
-1. **可交付物**：所选方案 vs M1 的四基准表 + 训练期效率/reward 表。  
-2. **成功标准**：结论可复述为「在选择器中启用 {模块列表} 后，相对 M1 …」；并注明所用超参档位（默认 C1 或环境自定义）。  
-3. **不预设**必须打败某一固定 M5；以**当次选定组合**为准。
+1. **可交付物**：可调用的评测流水线 + 空白/示例报告模板。  
+2. **成功标准**：总控制台能一键「评当前 run」；协议写清（同档超参、同评测脚本）。  
+3. **不预设**必须打败某一固定 M5。
 
-风险：评测数据体积大；每多一组权重多一轮评测成本——优先评 M1 + 1～2 个候选。
+风险：评测数据体积大——实跑时优先 **基线 + 1～2 个候选**。
 
 ---
 
-### Phase 6：开源发布（第 7–8 周）
+### Phase 6：总控制台 Notebook + 开源交付（第 7–8 周）
 
-| # | 任务 |
-|---|------|
-| 6.1 | README：选择器用法 + 模块对照调研章节 + Drive/Colab 流程（Phase1 传承） |
-| 6.2 | LICENSE（Apache-2.0） |
-| 6.3 | 示例：仅 M1、仅 CPPO、以及一两个推荐预设 |
-| 6.4 | Phase1 效率结论 + Phase4/5 当次组合结果 |
-| 6.5 | Release v0.1.0（主打 **可组合 GRPO 实验台**，而非单一神秘配方） |
+**定位**：汇总 Phase 0–5 成果的**使用者入口**。用 **Jupyter Notebook** 让人直观调参、勾选优化策略，并按固定实验节奏产出报告。开源叙事 = **可组合 GRPO 实验台**，总控制台是其主界面。
+
+**当前节奏提醒**：本阶段以**交付可运行的总控制台与文档**为主；单元格内的「训练 / 评测」在需要时再执行（Colab A100），不要求立刻把所有模型训完。
+
+#### 总控制台工作流（固定顺序）
+
+```
+① 环境与路径（Drive / REPO / 默认 C1，可改）
+        ↓
+② 调参 + 选择优化策略（调用 Phase4 选择器）
+        ↓
+③ 【基线】按当前参数训 M1（或指定基线）→ 训练期指标
+        ↓
+④ 【基线评测】跑四基准（或训练期快报）→ 生成基线测试报告
+        ↓
+⑤ 【优化方案】勾选其它模块组合 → 同参再训
+        ↓
+⑥ 【对比】相对基线生成对比报告（效率 + reward + 可选四基准 Δ）
+```
+
+| # | 任务 | 交付物 | 说明 |
+|---|------|--------|------|
+| 6.1 | **总控制台 Notebook** | `notebooks/mixup_console.ipynb` | 分节：环境 → 参数 → 策略 → 基线训/评 → 方案训/评 → 对比报告 |
+| 6.2 | 接入前期能力 | 同 Notebook | Phase2 默认 yaml；Phase3 registry；Phase4 选择器；Phase5 评测入口；Phase1 流程 |
+| 6.3 | **基线报告生成** | `outputs/{run}/baseline_report.md`（或 docs） | 参数快照 + 训练期表 +（可选）四基准 |
+| 6.4 | **对比报告生成** | `outputs/{run}/compare_vs_baseline.md` | 优化方案 vs 基线：steps/s、reward、评测 Δ |
+| 6.5 | 成果汇总页 | Notebook 首节或 `docs/CONSOLE_GUIDE.md` | Phase1 效率结论摘要、模块列表、档位约定、使用步骤 |
+| 6.6 | README / LICENSE / Release | README、Apache-2.0、v0.1.0 | 主推总控制台用法；预设示例（M1、CPPO、推荐组合） |
+
+**Notebook 分区建议**：
+
+| 分区 | 内容 |
+|------|------|
+| A. 总览 | 项目目标、Phase1 结论、模块一览、默认 C1 |
+| B. 环境 | 挂载 Drive、路径检查、依赖 |
+| C. 训练超参 | 覆盖 `colab_c1.yaml`（g / frames / steps / 数据等） |
+| D. 策略选择 | Phase4 开关 + 预设一键填入 |
+| E. 基线实验 | Train baseline → Eval → 写 `baseline_report` |
+| F. 优化实验 | 改 MIXUP → Train → Eval → 写 `compare_vs_baseline` |
+| G. 历史对照 | （可选）挂载 Phase1 A2/C2 训练期数字 |
+
+#### 预计成果（Phase 6）
+
+1. **可交付物**：一个可打开即用的总控制台 + 报告自动落盘约定 + 开源 README。  
+2. **成功标准**：使用者无需翻多个阶段 Notebook，即可完成「调参 → 基线 → 优化 → 对比报告」；未开训时也可浏览参数与策略说明。  
+3. **与「先流程、后训练」一致**：流程交付完成即 Phase 6 可验收；训练单元格保留，按需在 A100 上执行。
 
 ---
 
 ## 4. 近期执行清单
 
 - [x] Phase 1：A2 / C2（g8）无中断对比 + `docs/PHASE1_REPORT.md`（**流程已打通**）
-- [ ] **Phase 2**：默认 C1（=Phase1）→ `configs/colab_c1.yaml`；文档写清「部署环境可改参」
+- [x] **Phase 2**：默认 C1 → `configs/colab_c1.yaml` + `mixup.config_loader` + `docs/MEMORY_BENCHMARK_COLAB.md`
 - [ ] **Phase 3**：MixUp **模块库**（B/CPPO/GFPO/NGRPO/MO-GRPO… + registry，可扩展）
-- [ ] **Phase 4**：**优化方案选择器** + 默认训 **M1**；再跑至少 1 组自选组合
-- [ ] **Phase 5**：评测 **M1 + 所选组合**（四基准）
+- [ ] **Phase 4**：**优化方案选择器**（能力）；完整开训可延后至总控制台按需执行
+- [ ] **Phase 5**：**评测流水线**（脚本/模板）；实跑可延后
+- [ ] **Phase 6**：**总控制台 Notebook**（调参 → 基线报告 → 优化对比报告）+ Release
 
 ---
 
@@ -377,8 +425,9 @@ MIXUP = dict(
 - 默认 **C1**（与 Phase1 相同）：同一 `DATA_ROOT` / jsonl / `CKPT` / g=8 / frames=2；换环境可覆盖 yaml  
 - 与 Phase1 并表对比时保持同档；改参结果单独成组
 - Phase1 **A2 / C2** 可与 Phase4 **M1 / 自选组合** 做训练期并表；换档或换数据规模须单独标注  
-- 正式下游：Phase5 对 **M1 vs 当次所选组合** 跑上游四基准（可多组，但须同协议）  
+- 正式下游：经总控制台对 **基线 vs 当次优化方案** 跑上游四基准（可多组，须同协议）  
 - 每次 run 必须保存 **MixUp 开关快照**（否则无法复现「选了什么」）  
+- **先流程后训练**：Phase 2–6 以交付物就位为准；A100 开训按项目需要触发，不作为阶段门禁  
 
 ### 5.3 Git 与 Drive 分工
 
@@ -395,8 +444,8 @@ MIXUP = dict(
 [ ] PROJECT_DIR / REPO / CKPT / SMALL_JSONL 存在
 [ ] NUM_GENERATIONS 与档位一致（推荐 8）
 [ ] Trainer 已重置为本次策略（无残留错误补丁）
-[ ] 本次开关快照已记录；只跑计划中的 M1 / 自选组合
-[ ] 结束后确认 outputs 已在 Drive
+[ ] 本次开关快照已记录；按总控制台流程：先基线再优化方案
+[ ] 结束后确认 outputs / 报告已在 Drive
 ```
 
 ---
@@ -410,6 +459,7 @@ MIXUP = dict(
 | 上游仓库 | https://github.com/ZhangXJ199/TinyLLaVA-Video-R1 |
 | Phase 1 报告 | [`docs/PHASE1_REPORT.md`](./docs/PHASE1_REPORT.md) |
 | Phase 1 原始日志 | `docs/phase1运行记录.ipynb` |
+| **Phase 2 默认档 / 改参** | [`configs/colab_c1.yaml`](./configs/colab_c1.yaml) · [`docs/MEMORY_BENCHMARK_COLAB.md`](./docs/MEMORY_BENCHMARK_COLAB.md) |
 | **准确率向备选方案** | [`docs/ACCURACY_ORIENTED_OPTIONS.md`](./docs/ACCURACY_ORIENTED_OPTIONS.md) |
 | 上游评测脚本 | TinyLLaVA-Video-R1 `scripts/eval/{videomme,mvbench,mlvu,mmvu}.sh` |
 
@@ -424,11 +474,11 @@ MIXUP = dict(
 |------|----------|----------|----------|------|
 | Phase 0 | 2026-07-16 | 2026-07-18 | 文档侧 ✅ | Drive 勾选可补 |
 | Phase 1 | 2026-07-17 | 2026-07-25 | **2026-07-17** | A2/C2 g8 ✅；见 `docs/PHASE1_REPORT.md` |
-| Phase 2 | 2026-07-18 | 2026-07-23 | | 默认 C1 + 环境可调 |
+| Phase 2 | 2026-07-18 | 2026-07-23 | **2026-07-18** | 默认 C1 + loader + 换环境清单 |
 | Phase 3 | 2026-07-20 | 2026-08-10 | | **模块库**（可扩展复现调研方案） |
-| Phase 4 | 2026-08-05 | 2026-08-22 | | **选择器** + M1 + 自选组合训练 |
-| Phase 5 | 2026-08-20 | 2026-09-10 | | 评测 **M1 + 所选方案** |
-| Phase 6 | 2026-09-10 | 2026-09-20 | | Release（可组合实验台） |
+| Phase 4 | 2026-08-05 | 2026-08-22 | | **选择器能力**（开训可延后） |
+| Phase 5 | 2026-08-20 | 2026-09-10 | | **评测流水线**（实跑可延后） |
+| Phase 6 | 2026-09-10 | 2026-09-20 | | **总控制台** + Release |
 
 ---
 
@@ -445,4 +495,4 @@ MIXUP = dict(
 
 ---
 
-*最后更新：2026-07-18 · Phase 1 ✅ · 后续：默认 C1（可调）→ 模块库 → **选择器+M1** → 评测所选方案*
+*最后更新：2026-07-18 · Phase 1–2 ✅ · 后续：模块库 → 选择器 → 评测流水线 → **总控制台***

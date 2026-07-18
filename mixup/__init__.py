@@ -6,5 +6,18 @@ during Colab training.
 """
 
 from .registry import MixUpConfig, enabled_strategies
+from .config_loader import (
+    apply_config_to_notebook,
+    default_c1_path,
+    load_tier_config,
+    notebook_constants,
+)
 
-__all__ = ["MixUpConfig", "enabled_strategies"]
+__all__ = [
+    "MixUpConfig",
+    "enabled_strategies",
+    "load_tier_config",
+    "notebook_constants",
+    "apply_config_to_notebook",
+    "default_c1_path",
+]
