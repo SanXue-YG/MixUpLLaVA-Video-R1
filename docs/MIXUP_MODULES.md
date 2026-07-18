@@ -28,6 +28,16 @@ cfg = load_preset("m1_baseline_b")          # 同上
 
 消融预设：`ablation_b_only`、`speed_cppo`（仅 CPPO）、`ablation_grpo_vanilla`（纯 GRPO，对齐 Phase1 A2）。
 
+## Phase 4 选择器
+
+```python
+from mixup import prepare_training
+plan = prepare_training(preset="m1", mixup={"ngrpo": True}, project_dir=PROJECT_DIR)
+# → outputs/{run_id}/mixup_config.json + PHASE4_REPORT_STUB.md
+```
+
+详见 `notebooks/phase4-selector.ipynb`、`docs/PHASE4_REPORT.md`。
+
 冒烟（需 PyTorch）：
 
 ```bash

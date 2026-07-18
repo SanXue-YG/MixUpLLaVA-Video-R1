@@ -31,7 +31,7 @@ Windows 本机原生 DeepSpeed 训练流程不稳定，**不作为正式训练�
 
 ## 项目状态
 
-🚧 **开发中** — **Phase 1–3 已完成**（CPPO 流程 + 默认档 C1 + MixUp 模块库）。当前节奏：**先完成整条项目流程与交付物**；正式训练延后，需要时经 **Phase 6 总控制台**（调用 Phase 4 选择器）按需开训。最终单一「M5 配方」暂不锁定。
+🚧 **开发中** — **Phase 1–4 已完成**（CPPO 流程 + C1 默认档 + 模块库 + **选择器**）。当前节奏：**先完成整条项目流程与交付物**；正式训练延后，需要时经选择器 / **Phase 6 总控制台**按需开训。最终单一「M5 配方」暂不锁定。
 
 - [x] 项目目录与文档（GitHub 骨架）
 - [x] 实验计划表（对齐 Drive 成功路径 + 共享链接）
@@ -41,7 +41,7 @@ Windows 本机原生 DeepSpeed 训练流程不稳定，**不作为正式训练�
 - [x] Phase 1：A2 vs C2（g=8）效率对比 — 见 [`docs/PHASE1_REPORT.md`](./docs/PHASE1_REPORT.md)
 - [x] Phase 2：默认 C1（`configs/colab_c1.yaml`）+ 可覆盖加载（`mixup.config_loader`）+ [`docs/MEMORY_BENCHMARK_COLAB.md`](./docs/MEMORY_BENCHMARK_COLAB.md)
 - [x] Phase 3：**MixUp 模块库** — 见 [`docs/MIXUP_MODULES.md`](./docs/MIXUP_MODULES.md)；冒烟 `python -m mixup.tests_smoke`
-- [ ] Phase 4：**优化方案选择器**（能力交付；完整开训可延后）
+- [x] Phase 4：**优化方案选择器** — [`notebooks/phase4-selector.ipynb`](./notebooks/phase4-selector.ipynb)；`prepare_training` / 报告模板
 - [ ] Phase 5：**评测流水线**（四基准脚本/模板；实跑可延后）
 - [ ] Phase 6：**总控制台 Notebook** — 调参/选策略 → 基线训练与报告 → 优化方案训练与对比报告
 

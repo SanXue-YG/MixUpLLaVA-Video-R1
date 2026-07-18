@@ -2,10 +2,26 @@
 
 | Notebook | 用途 |
 |----------|------|
-| **`phase1-cppo-g8.ipynb`** | **Phase 1 主入口**：A2 / C2 /（可选）C3，g=8，默认快验 50 step |
-| `mixup-GRPO优化.ipynb` | 与上相同内容（兼容旧文件名） |
+| **`phase1-cppo-g8.ipynb`** | Phase 1：A2 / C2（g=8）效率对比 |
+| **`phase4-selector.ipynb`** | **Phase 4 选择器**：预设/开关 → `run_id` + 快照（开训可延后） |
+| `mixup-GRPO优化.ipynb` | 与 phase1 相同内容（兼容旧文件名） |
 
-## Phase 2：默认档位（推荐）
+## Phase 4：选择器（推荐）
+
+```python
+from mixup.training_entry import prepare_training
+plan = prepare_training(
+    preset="m1",                 # 或 m5 / m5q / speed
+    mixup={"ngrpo": True},       # 叠在默认 B+CPPO 上
+    project_dir=PROJECT_DIR,
+    apply_patch=False,           # Colab 确认路径后再 True
+)
+print(plan.summary())
+```
+
+报告模板：[`docs/PHASE4_REPORT.md`](../docs/PHASE4_REPORT.md)。
+
+## Phase 2：默认档位
 
 后续实验请以仓库 **`configs/colab_c1.yaml`** 为默认（与 Phase1 常量对齐）。换环境可覆盖，勿与 Phase1 默认档混比。
 

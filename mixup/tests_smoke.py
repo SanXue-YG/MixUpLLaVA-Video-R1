@@ -113,5 +113,39 @@ def main() -> None:
     print("ALL SMOKE TESTS PASSED")
 
 
+def _test_selector() -> None:
+    import tempfile
+    from pathlib import Path
+    from mixup.selector import prepare_run, build_mixup_config
+    from mixup.training_entry import prepare_training
+
+    cfg = build_mixup_config(mixup={"ngrpo": True})
+    assert cfg.project_baseline and cfg.cppo and cfg.ngrpo
+
+    cfg = build_mixup_config(preset="speed")
+    assert (not cfg.project_baseline) and cfg.cppo
+
+    with tempfile.TemporaryDirectory() as td:
+        plan = prepare_run(
+            preset="m1",
+            mixup={"mo_grpo": True},
+            out_base=td,
+            dry_run=False,
+            tag="test",
+        )
+        assert plan.mixup.mo_grpo and plan.mixup.cppo
+        assert Path(plan.snapshot_path).is_file()
+        assert Path(plan.report_stub_path).is_file()
+        assert "MO" in plan.run_id or "mo" in plan.run_id.lower() or "MO" in "".join(plan.enabled)
+        print("selector OK", plan.run_id)
+
+    plan2 = prepare_training(preset="m5q", dry_run=True, tag="dry")
+    assert plan2.mixup.ngrpo and plan2.mixup.mo_grpo
+    print("prepare_training dry_run OK", plan2.enabled)
+
+
 if __name__ == "__main__":
     main()
+    from pathlib import Path
+    _test_selector()
+    print("SELECTOR TESTS PASSED")
