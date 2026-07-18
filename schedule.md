@@ -107,7 +107,7 @@ Phase 2  默认档位 + 环境可调参   ██████████  Week 2
 Phase 3  MixUp 模块库（可扩展）    ██████████  Week 2–4 ✅ 调研可嵌入方案已注册
 Phase 4  优化方案选择器（能力）    ██████████  Week 4–5 ✅ 可勾选；开训可延后
 Phase 5  评测流水线（训练期为主） ██████████  Week 5–7 ✅ 总评估可选预留
-Phase 6  总控制台 Notebook         ██████████  Week 7–8 调参→基线→优化对比→报告
+Phase 6  总控制台 Notebook         ██████████  Week 7–8 ✅ 调参→基线→优化对比→报告
 ```
 
 ### 跨阶段对比约定（重要）
@@ -356,32 +356,18 @@ Phase1 的 A2（纯 GRPO）/ C2（仅 CPPO）作历史/消融对照，见 `prese
 ⑥ 【对比】相对基线：**训练期**效率/reward（+ 可选四基准 Δ）
 ```
 
-| # | 任务 | 交付物 | 说明 |
+| # | 任务 | 交付物 | 状态 |
 |---|------|--------|------|
-| 6.1 | **总控制台 Notebook** | `notebooks/mixup_console.ipynb` | 分节：环境 → 参数 → 策略 → 基线训/评 → 方案训/评 → 对比报告 |
-| 6.2 | 接入前期能力 | 同 Notebook | Phase2 默认 yaml；Phase3 registry；Phase4 选择器；Phase5 评测入口；Phase1 流程 |
-| 6.3 | **基线报告生成** | `outputs/{run}/baseline_report.md`（或 docs） | 参数快照 + 训练期表 +（可选）四基准 |
-| 6.4 | **对比报告生成** | `outputs/{run}/compare_vs_baseline.md` | 优化方案 vs 基线：steps/s、reward、评测 Δ |
-| 6.5 | 成果汇总页 | Notebook 首节或 `docs/CONSOLE_GUIDE.md` | Phase1 效率结论摘要、模块列表、档位约定、使用步骤 |
-| 6.6 | README / LICENSE / Release | README、Apache-2.0、v0.1.0 | 主推总控制台用法；预设示例（M1、CPPO、推荐组合） |
+| 6.1 | **总控制台 Notebook** | `notebooks/mixup_console.ipynb` | ✅ |
+| 6.2 | 接入前期能力 | 同 Notebook（C1 / 选择器 / 训练期评测 / 可选四基准） | ✅ |
+| 6.3 | **基线报告生成** | `mixup/console_reports.py` → `baseline_report.md` | ✅ |
+| 6.4 | **对比报告生成** | `compare_vs_baseline.md` | ✅ |
+| 6.5 | 成果汇总页 | `docs/CONSOLE_GUIDE.md` | ✅ |
+| 6.6 | README / LICENSE | README 主推控制台；`LICENSE` Apache-2.0 | ✅ |
 
-**Notebook 分区建议**：
+**验收**：未开训也可跑通「选策略 → 落盘 plan → 生成基线/对比报告骨架」；开训后刷新训练期指标即可填表。
 
-| 分区 | 内容 |
-|------|------|
-| A. 总览 | 项目目标、Phase1 结论、模块一览、默认 C1 |
-| B. 环境 | 挂载 Drive、路径检查、依赖 |
-| C. 训练超参 | 覆盖 `colab_c1.yaml`（g / frames / steps / 数据等） |
-| D. 策略选择 | Phase4 开关 + 预设一键填入 |
-| E. 基线实验 | Train baseline → Eval → 写 `baseline_report` |
-| F. 优化实验 | 改 MIXUP → Train → Eval → 写 `compare_vs_baseline` |
-| G. 历史对照 | （可选）挂载 Phase1 A2/C2 训练期数字 |
-
-#### 预计成果（Phase 6）
-
-1. **可交付物**：一个可打开即用的总控制台 + 报告自动落盘约定 + 开源 README。  
-2. **成功标准**：使用者无需翻多个阶段 Notebook，即可完成「调参 → 基线 → 优化 → 对比报告」；未开训时也可浏览参数与策略说明。  
-3. **与「先流程、后训练」一致**：流程交付完成即 Phase 6 可验收；训练单元格保留，按需在 A100 上执行。
+**本地进度**：**Phase 6 已完成**（总控制台 + 开源文档；开训非门禁）。
 
 ---
 
@@ -392,7 +378,7 @@ Phase1 的 A2（纯 GRPO）/ C2（仅 CPPO）作历史/消融对照，见 `prese
 - [x] **Phase 3**：MixUp **模块库**（B/CPPO/GFPO/NGRPO/MO-GRPO… + registry；见 `docs/MIXUP_MODULES.md`）
 - [x] **Phase 4**：**优化方案选择器**（`mixup/selector.py` + `notebooks/phase4-selector.ipynb`）；开训可延后
 - [x] **Phase 5**：**训练期评估流水线** + 四基准框架预留（~600GB，不强制）
-- [ ] **Phase 6**：**总控制台 Notebook**（调参 → 基线报告 → 优化对比报告）+ Release
+- [x] **Phase 6**：**总控制台** `notebooks/mixup_console.ipynb` + `docs/CONSOLE_GUIDE.md` + LICENSE
 
 ---
 
@@ -411,7 +397,7 @@ Phase1 的 A2（纯 GRPO）/ C2（仅 CPPO）作历史/消融对照，见 `prese
 - 默认 **C1**（与 Phase1 相同）：同一 `DATA_ROOT` / jsonl / `CKPT` / g=8 / frames=2；换环境可覆盖 yaml  
 - 与 Phase1 并表对比时保持同档；改参结果单独成组
 - Phase1 **A2 / C2** 可与 Phase4 **M1 / 自选组合** 做训练期并表；换档或换数据规模须单独标注  
-- 正式下游：经总控制台对 **基线 vs 当次优化方案** 跑上游四基准（可多组，须同协议）  
+- 正式下游：经总控制台默认做 **训练期** 基线 vs 方案对比；四基准总评估可选（须同协议、自备数据）  
 - 每次 run 必须保存 **MixUp 开关快照**（否则无法复现「选了什么」）  
 - **先流程后训练**：Phase 2–6 以交付物就位为准；A100 开训按项目需要触发，不作为阶段门禁  
 
@@ -449,6 +435,7 @@ Phase1 的 A2（纯 GRPO）/ C2（仅 CPPO）作历史/消融对照，见 `prese
 | **Phase 3 模块库** | [`docs/MIXUP_MODULES.md`](./docs/MIXUP_MODULES.md) · [`doc/`](./doc/README.md) 原论文 |
 | **Phase 4 选择器** | [`notebooks/phase4-selector.ipynb`](./notebooks/phase4-selector.ipynb) · [`docs/PHASE4_REPORT.md`](./docs/PHASE4_REPORT.md) |
 | **Phase 5 评测** | [`docs/PHASE5_EVAL_REPORT.md`](./docs/PHASE5_EVAL_REPORT.md) · [`docs/PHASE5_BENCHMARKS.md`](./docs/PHASE5_BENCHMARKS.md)（总评估可选） |
+| **Phase 6 总控制台** | [`notebooks/mixup_console.ipynb`](./notebooks/mixup_console.ipynb) · [`docs/CONSOLE_GUIDE.md`](./docs/CONSOLE_GUIDE.md) |
 | **准确率向备选方案** | [`docs/ACCURACY_ORIENTED_OPTIONS.md`](./docs/ACCURACY_ORIENTED_OPTIONS.md) |
 | 上游评测脚本 | TinyLLaVA-Video-R1 `scripts/eval/{videomme,mvbench,mlvu,mmvu}.sh` |
 
@@ -467,7 +454,7 @@ Phase1 的 A2（纯 GRPO）/ C2（仅 CPPO）作历史/消融对照，见 `prese
 | Phase 3 | 2026-07-20 | 2026-08-10 | **2026-07-18** | 模块库 + doc 原论文 + smoke ✅ |
 | Phase 4 | 2026-08-05 | 2026-08-22 | **2026-07-18** | 选择器能力 ✅；开训非门禁 |
 | Phase 5 | 2026-08-20 | 2026-09-10 | **2026-07-18** | 训练期评估 ✅；四基准可选预留 |
-| Phase 6 | 2026-09-10 | 2026-09-20 | | **总控制台** + Release |
+| Phase 6 | 2026-09-10 | 2026-09-20 | **2026-07-18** | 总控制台 + LICENSE ✅ |
 
 ---
 
@@ -484,4 +471,4 @@ Phase1 的 A2（纯 GRPO）/ C2（仅 CPPO）作历史/消融对照，见 `prese
 
 ---
 
-*最后更新：2026-07-18 · Phase 1–5 ✅ · 后续：**总控制台***
+*最后更新：2026-07-18 · **Phase 0–6 流程交付完成** · 开训 / 四基准按需*

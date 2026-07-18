@@ -2,11 +2,18 @@
 
 | Notebook | 用途 |
 |----------|------|
-| **`phase1-cppo-g8.ipynb`** | Phase 1：A2 / C2（g=8）效率对比 |
-| **`phase4-selector.ipynb`** | **Phase 4 选择器**：预设/开关 → `run_id` + 快照（开训可延后） |
+| **`mixup_console.ipynb`** | **Phase 6 总控制台（推荐主入口）** |
+| `phase4-selector.ipynb` | Phase 4 选择器（已被总控制台覆盖） |
+| `phase1-cppo-g8.ipynb` | Phase 1：A2 / C2 效率对比 |
 | `mixup-GRPO优化.ipynb` | 与 phase1 相同内容（兼容旧文件名） |
 
-## Phase 4：选择器（推荐）
+指南：[`docs/CONSOLE_GUIDE.md`](../docs/CONSOLE_GUIDE.md)。
+
+## Phase 6：总控制台
+
+自上而下：环境 → C1 超参 → 基线/方案策略 →（按需开训）→ 训练期报告 → 对比报告 →（可选四基准）。
+
+## Phase 4：选择器
 
 ```python
 from mixup.training_entry import prepare_training

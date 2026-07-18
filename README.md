@@ -29,9 +29,19 @@ Windows 本机原生 DeepSpeed 训练流程不稳定，**不作为正式训练�
 
 详细计划见 **[schedule.md](./schedule.md)**。
 
+## 快速开始（总控制台）
+
+打开 **[`notebooks/mixup_console.ipynb`](./notebooks/mixup_console.ipynb)**（指南：[`docs/CONSOLE_GUIDE.md`](./docs/CONSOLE_GUIDE.md)）：
+
+1. 环境 / 默认档 C1  
+2. 选策略（默认 **B+CPPO**，可叠 NGRPO 等）  
+3. 生成基线与优化方案 run  
+4. （按需）开训 → **训练期**评估与对比报告  
+5. （可选）四基准总评估  
+
 ## 项目状态
 
-🚧 **开发中** — **Phase 1–5 已完成**（流程 + 模块库 + 选择器 + **训练期评测**；四基准总评估仅预留）。正式训练 / 大规模基准下载按需进行。最终单一「M5 配方」暂不锁定。
+✅ **Phase 0–6 流程已交付** — 可组合 GRPO 实验台；正式训练 / ~600GB 四基准下载按需。最终单一「M5 配方」暂不锁定。
 
 - [x] 项目目录与文档（GitHub 骨架）
 - [x] 实验计划表（对齐 Drive 成功路径 + 共享链接）
@@ -43,7 +53,7 @@ Windows 本机原生 DeepSpeed 训练流程不稳定，**不作为正式训练�
 - [x] Phase 3：**MixUp 模块库** — 见 [`docs/MIXUP_MODULES.md`](./docs/MIXUP_MODULES.md)；冒烟 `python -m mixup.tests_smoke`
 - [x] Phase 4：**优化方案选择器** — [`notebooks/phase4-selector.ipynb`](./notebooks/phase4-selector.ipynb)；`prepare_training` / 报告模板
 - [x] Phase 5：**训练期评估**（`mixup/eval_training.py`）+ 四基准可选框架（[`docs/PHASE5_BENCHMARKS.md`](./docs/PHASE5_BENCHMARKS.md)，~600GB 不强制）
-- [ ] Phase 6：**总控制台 Notebook** — 调参/选策略 → 基线训练与**训练期**报告 → 优化方案对比（四基准按需）
+- [x] Phase 6：**总控制台** — [`notebooks/mixup_console.ipynb`](./notebooks/mixup_console.ipynb) · [`docs/CONSOLE_GUIDE.md`](./docs/CONSOLE_GUIDE.md) · `LICENSE`（Apache-2.0）
 
 ### 评估口径（约定）
 

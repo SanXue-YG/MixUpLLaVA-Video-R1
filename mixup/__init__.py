@@ -7,6 +7,12 @@ from .config_loader import (
     load_tier_config,
     notebook_constants,
 )
+from .console_reports import (
+    PHASE1_REFERENCE,
+    refresh_training_eval,
+    write_baseline_report,
+    write_compare_report,
+)
 from .eval_benchmarks import build_benchmark_plan, run_benchmark
 from .eval_training import (
     collect_training_metrics,
@@ -73,4 +79,8 @@ __all__ = [
     "write_training_eval_report",
     "build_benchmark_plan",
     "run_benchmark",
+    "write_baseline_report",
+    "write_compare_report",
+    "refresh_training_eval",
+    "PHASE1_REFERENCE",
 ]
