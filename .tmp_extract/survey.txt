@@ -1,0 +1,1058 @@
+基于 Video-R1 的视频交通异常行为检测项目中的 GRPO 优化
+调研报告
+作者：张一鸣
+February 3, 2026
+Abstract
+本文面向基于 Video-R1 的视频交通异常行为检测项目，围绕其核心强化学习训练范式
+Group Relative Policy Optimization （GRPO）开展系统调研。首先，本文以 GRPO 的组内相
+对比较、规则奖励与标准化优势为基础，梳理 Video-R1 提出的 Temporal GRPO （T-GRPO）
+如何通过时间顺序对比引入时间奖励，从而引导模型利用时序结构进行推理。其次，在不改变
+SFT+GRPO 总体框架的前提下，本文聚焦可直接嵌入 Video-R1 的局部改进方案，并按优化
+目标将其归纳为四类：训练效率导向的 rollout 复用与样本过滤（如 CPPO、GFPO） 、推理结
+构导向的 step-wise 奖励与过程约束（如 StepGRPO） 、稳定性导向的bad group 处理与负信号
+增强（如 GRPO-A、NGRPO） ，以及优势计算与梯度聚合的冲突缓解与数值稳定性改进（如
+DaGRPO、GMPO、MAPO） ， 并对多目标奖励场景下的优势重构（MO-GRPO）进行讨论。最
+后，本文总结了跳出 Video-R1 框架的结构性探索方向，指出训练范式重构、非参数化优化与轨
+迹/序列级建模为后续更大范围系统改造提供了理论启发。该调研为项目后续在效率、稳定性与
+推理行为控制上的优化选型提供参考。
+1 引言
+随着智能交通系统和城市级监控基础设施的快速发展， 基于视频的道路交通异常检测已成为智
+能交通管理中的关键任务之一。该任务依赖道路监控摄像头对交通场景进行实时分析，以识别闯红
+灯、逆行、违规变道及异常停车等交通违法或异常行为。由于此类异常往往具有时序跨度长、语义
+依赖强且行为边界模糊等特点，单纯依赖低层视觉特征的感知方法难以实现稳定可靠的检测效果，
+道路交通视频异常检测逐渐从传统的感知驱动问题演变为一个需要结合时序理解与高层语义推理
+的综合任务。
+早期的视频异常检测研究主要从感知建模角度出发， 通过学习正常行为模式来间接刻画异常事
+件。例如，Hasan 等人通过建模视频序列中的时间规律性来描述正常行为，并将偏离该规律的片段
+视为异常 [5]；Liu 等人提出基于未来帧预测误差的异常检测方法， 以模型对正常场景的预测能力作
+为异常判据 [6]。尽管这类方法在弱监督场景下取得了一定成效，但其对复杂交通场景中高层行为
+语义与推理逻辑的建模能力仍然有限。
+随着 Transformer 架构在序列建模和视觉理解任务中的广泛应用，视频异常检测逐渐向基于全
+局时序建模与语义理解的方向发展。Dilek 和 Dener 在其综述中系统总结了 Transformer 在视频异
+常检测领域的研究进展，指出自注意力机制在捕获长时依赖和复杂行为模式方面具有显著优势 [7]。
+在具体应用中，Deshpande 等人通过引入基于 Transformer 的注意力机制，对监控视频中的关键时
+空区域进行建模，使模型能够在更高语义层面理解异常行为 [8]。这些研究表明，当前视频异常检
+测已逐步从单纯的感知问题演变为融合时序建模、语义理解与跨模态信息的推理任务。
+在模型能力不断提升的同时， 强化学习方法在大模型训练与对齐中的作用也日益凸显。Ouyang
+等人提出的基于人类反馈的强化学习（RLHF）框架系统性地展示了强化学习在语言模型对齐中的
+有效性，并以 PPO 作为核心策略优化方法，在指令跟随任务中取得了显著成效 [1]。然而，随着推
+1
+理型任务复杂度的提升，传统 PPO 在长推理链和多候选输出场景中逐渐暴露出样本效率低和训练
+不稳定等问题。
+针对上述挑战， Shao 等人在 DeepSeekMath 中提出了 Group Relative Policy Optimization
+（GRPO）策略，通过在同一输入下生成多条输出并进行相对比较，弱化了对绝对奖励标定的依赖，
+为复杂推理任务提供了更加稳定和鲁棒的优化信号 [2]。随后，Guo 等人在 DeepSeek-R1 中进一步
+验证了 GRPO 在提升大语言模型推理能力方面的有效性 [3]，而 Kimi 团队在 Kimi K1.5 中从规模
+化训练角度探索了强化学习在大模型推理任务中的不同实现路径 [4]。这些工作表明，GRPO 已逐
+渐成为当前推理型大模型强化学习的重要范式。
+在多模态场景中，GRPO 的思想也被引入到视频推理任务中。 Feng 等人提出的 Video-R1 将
+GRPO 应用于视频理解与推理任务，通过强化学习显式引导模型生成更合理的视频推理过程，为
+多模态视频异常检测提供了具有代表性的研究基点 [10]。与此同时， Mroueh 等人从理论层面对
+GRPO 的训练性质进行了系统分析，探讨了其 on-policy 与 off-policy 特性及潜在改进空间，为后
+续方法研究提供了重要参考 [17]。
+综上所述，视频异常检测已从早期以感知建模为核心的方法，发展到以多模态理解与推理能力
+为关键的新阶段，而 GRPO 在其中逐渐成为连接推理能力与强化学习训练范式的重要桥梁。然而，
+现有工作（如 Video-R1）大多仍沿用原始 GRPO 框架，其在训练效率、稳定性及推理行为控制等
+方面仍存在进一步优化空间。因此，本调研以 Video-R1 所采用的 GRPO 训练范式为基础，并结
+合当前项目中的实际优化方案，系统梳理近年来围绕 GRPO 的不同优化方向；重点关注在尽量不
+修改项目整体结构、继承当前项目实际优化节点的前提下，仅对 GRPO 相关模块进行改进，探索
+更高效、更稳定的优化方案。
+2 背景
+本次调研是基于当前项目组的实际需求而对 GRPO 的现有优化方案进行的总结和分析。为此
+我将在本节系统梳理作为项目基点的 Video-R1 中的 T-GRPO 算法详情，以及当前项目中使用的
+优化方案，作为之后工作的对比基线。
+2.1 Group Relative Policy Optimization (GRPO)
+Group Relative Policy Optimization （GRPO）是一种无需显式 critic 的策略优化方法，其核
+心思想是通过组内相对比较来构造优势函数，从而避免对绝对奖励尺度和价值函数建模的依赖。该
+方法尤其适用于奖励难以精确标定的推理类任务。
+多样本生成 给定输入问题 q ∼ P (Q)，旧策略 πθold 从条件分布中采样生成一组候选输出：
+{o1, o2, . . . , oG} ∼ πθold(· | q), (1)
+其中 G 表示同一输入下生成的输出数量（group size ） 。
+规则奖励函数 GRPO 不依赖额外训练的奖励模型，而是采用基于规则的奖励函数对每个输出进
+行打分：
+ri = Rformat(oi) + Raccuracy(oi), (2)
+其中 Rformat(·) 用于约束输出结构和格式，Raccuracy(·) 用于衡量任务正确性。
+组内相对优势函数 基于同一 group 内的奖励分布，GRPO 通过标准化的方式定义优势函数：
+Ai = ri − mean({r1, r2, . . . , rG})
+std({r1, r2, . . . , rG}) , (3)
+该定义仅依赖组内相对表现，从而减弱了对绝对奖励尺度的敏感性。
+2
+GRPO 优化目标 在上述优势定义的基础上， GRPO 采用与 PPO 类似的截断策略梯度目标函数：
+JGRPO(θ) = E
+2
+4 1
+G
+GX
+i=1
+1
+|oi|
+|oi|X
+t=1
+
+min(ρi,tAi, clip(ρi,t, 1 − ϵ, 1 + ϵ)Ai) − βDKL(πθ ∥ πref)
+
+3
+5 , (4)
+其中策略比率定义为：
+ρi,t = πθ(oi,t | q, oi,<t)
+πθold(oi,t | q, oi,<t) . (5)
+其中 ϵ 为截断超参数，β 控制 KL 正则项强度，πref 通常为强化学习前的参考模型。
+2.2 Video-R1 中的 Temporal GRPO (T-GRPO)
+在视频推理任务中，仅基于最终正确性的奖励容易导致模型忽略时间顺序信息，进而通过局部
+帧线索或 shortcut 完成推理。为显式引导模型利用时间结构， Video-R1 在 GRPO 基础上提出了
+Temporal GRPO（T-GRPO） 。
+时间对比设定 对于同一视频输入， T-GRPO 构造两种输入形式： 保持原始时间顺序的帧序列， 以
+及随机打乱时间顺序的帧序列。模型分别生成对应的输出集合，并统计其正确率：
+p = #correct(oi)
+G , ˜p = #correct(˜oj)
+˜G
+. (6)
+时间奖励定义 基于上述对比结果，引入时间奖励项：
+rt =
+(
+α, p ≥ ˜p,
+0, otherwise, (7)
+其中 α 为时间奖励强度的超参数。该设计保证模型只有在真实利用时间顺序信息时才能获得额外
+奖励。
+时间增强奖励与优势计算 最终用于策略优化的奖励定义为：
+Ri = ri + rt, (8)
+并基于增强后的奖励重新计算组内优势：
+Ai = Ri − mean({R1, R2, . . . , RG})
+std({R1, R2, . . . , RG}) . (9)
+随后，模型仍采用式（4）所示的 GRPO 优化目标进行参数更新。
+2.3 当前项目中的 GRPO 优化方案概述
+在本项目的现阶段实现中，整体训练框架仍严格继承自 Video-R1 所采用的 Group Relative
+Policy Optimization（GRPO）范式，未对其基本优化目标或训练流程进行结构性修改。具体而言，
+策略模型仍基于同一输入进行多次 rollout，并通过组内相对比较的方式计算奖励与优势项，从而
+更新模型参数。在此基础上，当前项目的优化主要集中在 reward 设计与 advantage 计算两个层面，
+引入了难度感知（diﬀiculty-aware）的调节机制，以提升模型在复杂推理任务中的学习效率与稳定
+性。
+3
+Figure 1: 当前项目中 GRPO 优化方案简图
+如图 1 所示，针对同一输入问题，策略模型生成多条候选输出后，首先基于多次 rollout 的正
+确率统计对问题难度进行自动估计。该难度度量并非依赖人工标注，而是反映模型在该问题上的实
+际推理成功率，从而能够动态区分相对“容易”与“困难”的样本。在此基础上，引入与问题难度
+相关的权重函数，对不同输出对应的 advantage 进行重新加权，使训练过程更加关注高难度问题上
+的推理优化。
+此外，当前方案在 reward 设计中引入了自适应的长度奖励与惩罚机制。该机制根据估计得到
+的问题难度，对输出推理序列的长度进行动态约束：对于较容易的问题，鼓励模型生成更简洁的推
+理过程；而对于较困难的问题，则允许或鼓励更充分的中间推理步骤。通过这一方式，在保证推理
+正确性的前提下，引导模型逐步形成更加合理且稳定的推理长度分布，从而缓解冗余推理或过度简
+化带来的训练不稳定问题。
+总体而言，该优化方案仍属于 GRPO 主体框架下的局部改进，其核心思想可归纳为在不引入
+额外价值函数或改变组内相对比较机制的前提下，通过 reward shaping 与 advantage weighting 的
+方式增强训练信号的区分度。该方案为后续进一步探索更系统化的 GRPO 优化方法提供了现实背
+景与对照基础。
+3 优化方法论：可直接应用于 Video-R1 的 GRPO 改进方案
+在不改变 Video-R1 所采用的整体训练范式（即 SFT + GRPO ）的前提下，近年来已有多项
+研究围绕 GRPO 的具体实现环节提出了针对性的改进方案。这类方法通常保持组内相对比较与策
+略梯度更新的基本结构，仅对 rollout 使用方式、奖励构造、优势计算或梯度聚合等局部模块进行
+调整，因此具有较高的工程可复用性。本节将根据这些方法的主要优化目标，对相关工作进行系统
+分类，并结合 Video-R1 中 GRPO 的公式描述，明确各方法的具体修改位置。
+3.1 训练效率导向的优化：rollout 复用与冗余削减
+在推理型任务中，GRPO 通常需要对同一输入进行多次 rollout，以构造稳定的组内相对比较
+信号。然而，随着推理序列长度和 group size 的增加，训练过程容易受到显著的计算与时间开销限
+制。针对这一问题，部分研究从 rollout 复用与样本筛选的角度出发，对 GRPO 的采样与更新流程
+进行了优化。
+CPPO 提出了一种并行化的训练策略，通过对 rollout 与策略更新过程进行重组与复用，在不
+改变 GRPO 目标函数形式的前提下显著提升训练吞吐率 [9]。从 Video-R1 的 GRPO 公式角度看，
+该方法并未修改奖励函数或优势定义，而是主要作用于多样本生成与梯度更新的调度方式，从而减
+少重复计算带来的开销。
+Group Filtered Policy Optimization 进一步从样本利用效率的角度出发， 认为并非所有rollout
+都对策略更新具有同等价值 [26]。该方法在 group 内引入过滤机制，仅保留对推理结构具有代表
+4
+性的样本参与优势计算与梯度更新。其修改位置位于组内优势计算之前，相当于在 Video-R1 的
+GRPO 流程中引入了一步显式的样本选择操作，从而有效缓解推理冗余问题。
+3.1.1 CPPO ：基于优势筛选的 rollout 剪枝与训练加速
+在标准 GRPO（及 T-GRPO）中，对于同一输入问题 q，从旧策略 πθold 中采样得到的 G 条
+候选输出均参与策略梯度计算，其优化目标如式（4）所示。这一“全量 completion 更新”的设计
+虽然保证了组内相对比较的稳定性，但也导致训练计算量随 group size 线性增长。
+CPPO（Completion Pruning Policy Optimization ）指出，在 GRPO 的策略梯度中，不同
+completion 对参数更新的实际贡献高度不均衡，其主要由对应的相对优势 Ai 决定。当 |Ai| 接近于
+0 时，该 completion 对梯度的贡献可以忽略 [9]。基于这一观察，CPPO 在不改变奖励定义、优势
+计算方式及策略更新结构的前提下，对 GRPO 的目标函数施加了基于优势的筛选约束。
+Figure 2: Overview of Completion Pruning Policy Optimization (CPPO). [9]
+具体而言，CPPO 引入一个优势阈值 γ，仅保留优势绝对值足够大的 completions 参与策略更
+新。其目标函数可写为：
+JCPPO(θ) = E
+2
+4 1
+G
+GX
+i=1
+1(|Ai| ≥ γ) · 1
+|oi|
+|oi|X
+t=1
+
+min(ρi,tAi, clip(ρi,t, 1 − ϵ, 1 + ϵ)Ai) − βDKL(πθ ∥ πref)
+
+3
+5 ,
+(10)
+其中 1(·) 为指示函数。与式（4）相比，CPPO 的修改仅体现在对 completion 索引集合的约束，而
+奖励函数 ri、增强奖励 Ri（若采用 T-GRPO）及优势定义 Ai 均保持不变。
+CPPO 进一步从梯度分解的角度说明了该剪枝策略的合理性。 GRPO 的策略梯度可近似表示
+为：
+∇θJGRPO(θ) ≈ E
+2
+4 1
+G
+GX
+i=1
+1
+|oi|
+|oi|X
+t=1
+(ρi,t · Ai · ∇θ log πθ(oi,t | q, oi,<t))
+3
+5 , (11)
+5
+其中优势项 Ai 可在策略模型前向计算之前获得，因此可作为先验信息用于 completion 的剪枝 [9]。
+当 |Ai| 较小时，对应项对整体梯度的贡献亦随之减小，从而可以在不显著影响优化方向的前提下
+将其移除。
+在实际实现中，为避免多 GPU 训练中因不同样本保留 completion 数量不一致而导致的负载
+不均问题，CPPO 通常采用固定比例的剪枝策略。设剪枝率为 P ∈ (0, 1]，则每个问题最终参与更
+新的 completion 数量为：
+k = ⌊G · (1 − P )⌋ . (12)
+通过将原本对 G 条 completion 的全量更新替换为对 k 条高优势 completion 的更新，CPPO 在保
+持 GRPO 优化形式不变的同时显著降低了训练阶段的前向与反向计算开销。
+从公式层面看，CPPO 并未改变 GRPO 或 T-GRPO 的奖励与优势建模方式，其训练加速效
+果完全来源于对策略目标中求和索引集合的约束。 这一特性使其能够作为一种高度模块化的效率优
+化方法，直接嵌入 Video-R1 的 GRPO 训练流程中。
+此外，论文中还提出一种动态补全分配策略，通过提升 GPU 利用率以进一步优化 CPPO 的
+训练效率 [9]。但使用该策略需要在现有项目基础上做较大修改，因此不符合本次调研目标故不在
+此赘述。
+3.1.2 GFPO ：基于 T op-k 优势掩码的组内样本过滤
+在 GRPO 框架中，策略更新依赖于同一输入问题下多个 completion 之间的相对比较。然而，
+当 group 内大量 completions 在目标属性上表现相近时，其对应的优势分布将高度集中，难以为策
+略优化提供有效区分信号。 GFPO（Group Filtered Policy Optimization ）针对这一问题，在保持
+GRPO 整体优化结构不变的前提下，引入了基于目标属性的组内 Top-k completion 选择与优势掩
+码机制 [26]。
+Figure 3: GFPO 对 GRPO 进行了简单而强大的改进：在训练期间采样更多响应（↑G） ，根据目标
+属性（例如长度、词元效率）对响应进行排序，并仅从排名前 k 的响应中学习——将其余响应的优
+势设为零。这种选择性学习起到了隐式奖励塑造的作用，引导策略朝着期望的行为发展。 [26]
+给定同一输入问题 q 下生成的 completion group G = {o1, . . . , oG}，GFPO 首先基于预定义的
+评分函数 metric(·)（如推理长度或 token 效率）对所有 completions 进行排序，并通过 rejection
+6
+sampling 选择 Top-k 子集：
+S, m = RejectionSample(G, k, metric, order), m i = I[i ∈ S ], (13)
+其中 S ⊂ G 表示被保留的 Top-k completions，m 为对应的二值掩码向量。
+与 GRPO 中基于完整 group 的优势归一化不同， GFPO 仅在 Top-k 子集上计算奖励的均值
+与标准差：
+µS = 1
+k
+X
+i∈S
+R(q, oi), σ S =
+s
+1
+k
+X
+i∈S
+ 
+R(q, oi) − µS
+2. (14)
+在此基础上，GFPO 定义带掩码的优势函数：
+ˆA(m)
+i,t = R(q, oi) − µS
+σS
+mi, (15)
+即仅对被选中的 Top-k completions 分配非零优势，而其余 completions 的优势被显式置零。
+最终，GFPO 的策略优化目标可写为：
+JGFPO(θ) = E
+2
+4 1PG
+i=1 |oi|
+GX
+i=1
+|oi|X
+t=1
+min
+
+ρi,t ˆA(m)
+i,t , clip(ρi,t, 1 − ϵ, 1 + ϵ) ˆA(m)
+i,t
+
+− βDKL(πθ∥πref)
+3
+5 ,
+(16)
+其中策略比率 ρi,t 的定义与 GRPO 保持一致。
+需要指出的是，与 CPPO 通过直接裁剪 completion 来减少前向与反向计算不同， GFPO 在
+batch 结构与前向计算阶段仍保留全部 completions，其效率提升主要来源于优势层面的掩码机制
+与相对比较结构的重塑。此外，GFPO 进一步引入基于历史奖励分布的自适应难度采样策略， 根据
+问题难度动态调整 k 的取值，从而在训练过程中实现“sample more, think less ”的优化目标 [26]。
+这一思路与当前项目中通过历史正确率判断问题难易有相似作用。
+3.2 推理结构导向的优化：step-wise 奖励与过程约束
+标准 GRPO 通常以完整输出序列作为基本优化对象，这在推理任务中可能导致模型通过冗余
+或不稳定的中间推理步骤获得相似的最终奖励。为引导模型形成更加结构化的推理过程，部分研究
+对奖励的作用粒度进行了细化。
+R1-VL 在 GRPO 框架下引入了 step-wise 的相对比较机制，将奖励信号从最终答案扩展至推
+理过程中的中间步骤 [11]。从 Video-R1 的公式描述来看，该方法本质上是在奖励函数 ri 的定义上
+引入了时间或步骤维度，使优势项能够更精细地反映推理轨迹内部的质量差异，而不再仅依赖最终
+输出的整体表现。
+这类方法在保持 GRPO 组内相对比较机制不变的前提下，对奖励信号的分布方式进行了调整，
+从而增强了对推理结构的约束能力。
+3.2.1 StepGRPO ：基于推理步骤的结构化相对优化
+在标准 GRPO 及 Video-R1 中的 T-GRPO 设定下， 一条完整推理轨迹被视为不可分割的优化
+单元， 其奖励与优势均在轨迹结束后统一计算。 这种trajectory-level 的设计在推理任务中容易导致
+奖励稀疏，并且难以区分不同推理路径在中间结构上的质量差异。为此， R1-VL 提出了 Step-wise
+Group Relative Policy Optimization （StepGRPO） ，通过将GRPO 的优化粒度从完整轨迹扩展至
+推理步骤层面，引入结构化的过程级优化信号 [11]。
+7
+Figure 4: StepGRPO 概述。StepGRPO 由两个阶段组成： 策略预热阶段和逐步在线策略优化阶段。
+预热阶段结束后，策略模型 ￿ 生成一组推理路径 c，并使用两种提出的机制分配逐步奖励：逐步推
+理准确率奖励 (StepRAR) 和逐步推理有效性奖励 (StepR VR)。StepRAR 奖励包含关键中间步骤
+的推理路径，这些关键中间步骤通过软关键步骤匹配技术识别。 StepR VR基于完整性和逻辑一致
+性奖励推理路径， 确保其结构良好。 然后，StepGRPO 以一组采样推理路径的平均逐步推理奖励作
+为基线，估计策略优化的优势 ˆA。StepRAR 和 StepR VR的示例分别如图 (a) 和 (b) 所示。
+Step-wise 推理建模 给定输入问题 q，模型生成的推理输出被显式建模为由多个推理步骤组成的
+序列：
+oi = {si,1, si,2, . . . , si,Li}, (17)
+其中 si,l 表示第 i 条推理路径中的第 l 个 reasoning step ，Li 为该路径包含的步骤数量。与 GRPO
+中将 token 作为基本优化单位不同，StepGRPO 将策略更新中的“动作”定义为 reasoning step 。
+Step-wise 奖励构成：StepRAR 与 StepR VR 在 StepGRPO 中，单个推理步骤的奖励 rstep
+i,l
+由两类基于规则的中间奖励共同构成， 即推理准确性奖励 （Step-wise Reasoning Accuracy Reward,
+StepRAR）与推理有效性奖励（Step-wise Reasoning Validity Reward, StepR VR [11] 。其形式可写
+为：
+rstep
+i,l = rRAR
+i,l + rRVR
+i,l . (18)
+Step-wise Reasoning Accuracy Reward (StepRAR) StepRAR 用于衡量单个推理步骤在
+多大程度上覆盖了参考推理链中的关键中间步骤。设第 i 条推理路径在当前步骤前已匹配的关键步
+骤比例为
+ki = |Vmatch|
+|V| , (19)
+其中 V 表示参考推理链中的关键步骤集合，Vmatch 为当前已匹配的关键步骤子集。
+8
+基于上述定义，StepRAR 在第 t 个推理步骤处的奖励被定义为：
+ri
+RAR(st, at, st+1) =
+8
+><
+>:
+1 + αki, ans(st+1) = y,
+αki, ans(st+1) ̸= null, ans(st+1) ̸= y,
+0, ans(st+1) = null,
+(20)
+其中 ans(st+1) 表示模型在状态 st+1 是否给出答案，y 为正确答案，α 为超参数。该奖励机制使模
+型即便在未给出最终正确答案的情况下，只要推理过程中逐步覆盖正确的中间推理步骤，仍可获得
+正向反馈。
+Step-wise Reasoning Validity Reward (StepR VR) 除推理准确性外，StepGRPO 进一步通
+过 StepR VR对推理结构的合法性进行约束。 StepR VR用于判断当前推理步骤是否满足预定义的
+结构有效性条件，例如推理是否完整、推理与答案的顺序是否合理等。
+形式化地，StepR VR被定义为：
+ri
+RVR(st, at, st+1) =
+(
+1, I(δc(st+1)) · I
+ 
+δl(st+1)
+
+= 1,
+0, otherwise, (21)
+其中 δc(·) 与 δl(·) 分别表示推理完整性（completeness）与推理逻辑顺序（logical order ）的判定函
+数。仅当推理步骤同时满足这两类结构约束时，StepR VR才给予正奖励。
+Step-wise 奖励分解 在 StepGRPO 中，完整推理路径的奖励由各个推理步骤的奖励聚合得到。
+具体而言，每个 reasoning step 被赋予一个规则驱动的中间奖励 rstep
+i,l ，其来源包括推理准确性
+（StepRAR）与结构有效性（StepR VR）约束 [11]。基于此，trajectory-level 奖励被重写为：
+Ri =
+LiX
+l=1
+rstep
+i,l . (22)
+Step-wise 优势计算 在保留 group-relative 优化思想的前提下，StepGRPO 基于 step-wise 聚合
+奖励重新定义优势项。对于同一输入问题下生成的 G 条推理路径，其优势可写为：
+Ai = Ri − mean({R1, R2, . . . , RG})
+std({R1, R2, . . . , RG}) . (23)
+需要注意的是， 与GRPO 的差异不在于优势的数学形式， 而在于Ri 的构成方式由 trajectory-level
+reward 转变为 step-wise reward 的聚合。
+StepGRPO 的策略优化目标 在上述定义下， StepGRPO 仍采用与 GRPO 相同的 clipped policy
+gradient 目标函数，其形式可写为：
+JStepGRPO(θ) = E
+"
+1
+G
+GX
+i=1
+1
+Li
+LiX
+l=1
+min
+
+ρi,lAi, clip(ρi,l, 1 − ϵ, 1 + ϵ)Ai
+
+− βDKL(πθ ∥ πref)
+#
+, (24)
+其中策略比率定义为：
+ρi,l = πθ(si,l | q, si,<l)
+πθold(si,l | q, si,<l) . (25)
+9
+小结 从公式层面看， StepGRPO 并未改变 GRPO 的 group-relative 比较机制或策略更新结构，
+其核心差异体现在奖励与优势的构成方式上。通过将奖励信号从 trajectory 级别分解至推理步骤级
+别，StepGRPO 为强化学习过程引入了更加密集且结构敏感的优化信号，从而更有效地引导模型
+学习合理的推理结构 [11]。
+3.3 稳定性与鲁棒性导向的优化：bad group 与负信号建模
+在组内相对比较的训练过程中，部分输入可能生成整体质量较低的候选输出集合（即“ bad
+group” ） ，从而导致优势计算失真并影响训练稳定性。针对这一问题，一些研究通过引入指导或负
+信号增强机制，对 GRPO 的奖励与优势构造进行了改进。
+GRPO-A 提出在组内引入自适应 guidance 机制，对低质量 group 进行显式调节，以避免无效
+或误导性的梯度更新 [15]。该方法并未改变 Video-R1 中 GRPO 的整体目标函数形式，而是通过
+在奖励或优势层面引入额外的调节项，缓解 bad group 对训练过程的负面影响。
+NGRPO 则从另一角度出发，强调全错样本在策略学习中的价值 [16]。该方法通过增强负奖励
+信号，使模型能够更明确地区分失败推理与成功推理轨迹。其修改位置主要体现在奖励函数 ri 的
+构造方式上，在保持组内标准化优势计算不变的情况下，引入更具判别性的负反馈。
+3.3.1 GRPO-A ：基于自适应引导的稳定性增强
+在标准 GRPO 及 Video-R1 的训练范式中，策略优化完全依赖模型自身采样得到的 rollout 进
+行组内相对比较。当模型尚未具备生成高质量推理轨迹的能力时，group 内样本往往整体质量较低
+或奖励分布高度集中， 从而导致优势信号退化， 训练过程表现出明显的不稳定性。 为缓解上述问题，
+Guo 等人提出了 GRPO-A（Guided Group Relative Policy Optimization ） ，通过在rollout 阶段引
+入引导样本以增强训练稳定性 [15]。
+Figure 5: GRPO-A 概述。在每个步骤中将推广活动分为引导集和非引导集。然后将当前奖励与前
+几个步骤的奖励进行比较；所得比率决定了未来的引导时长。
+引导增强的 rollout 构造 GRPO-A 的核心思想是在每个 group 中仅对部分 rollout 引入外部引
+导，而非对所有样本施加相同约束。具体而言，对于同一输入问题 q，模型生成的第 i 条推理轨迹
+可表示为：
+oi =
+ 
+gi, ˆoi
+
+, (26)
+其中 gi 表示引导片段，ˆoi 为模型在引导之后自由生成的推理内容。引导长度由参数 ℓ 控制，其在
+group 内的分配规则为：
+|gi| =
+(
+ℓ, i ≤ αG,
+0, i > αG, (27)
+10
+其中 G 为 group size ，α ∈ (0, 1) 表示引导样本在 group 中所占比例。通过这种组内部分引导
+（partial inner-group guidance ）的方式，GRPO-A 在每个 group 中人为构造了若干高质量参考轨
+迹，以提升奖励分布的可分性。
+自适应引导长度更新 固定的引导强度在不同训练阶段可能并不适用。为此， GRPO-A 进一步引
+入自适应引导机制，根据训练过程中的奖励变化动态调整引导长度。设第 k 个训练 step 的平均奖
+励为 rk，则下一步的引导长度 ℓk+1 按如下规则更新：
+ℓk+1 = ℓk · min(T, k) rk
+Pmin(T,k )
+τ =1 rk−τ
+, (28)
+其中 T 为历史奖励的统计窗口大小。该更新策略在奖励持续上升时逐步减弱引导，从而增加样本
+难度；在奖励下降或波动加剧时增强引导，以稳定训练信号。
+与 GRPO 优化目标的关系 GRPO-A 并未对 GRPO 的奖励定义、 优势计算方式或策略更新目标
+进行修改。引导样本仅通过影响 rollout 的生成质量间接改变奖励分布，其优势项仍按标准 GRPO
+方式计算：
+Ai = Ri − mean({R1, R2, . . . , RG})
+std({R1, R2, . . . , RG}) . (29)
+随后，模型参数仍通过 GRPO 的 clipped policy gradient 目标函数进行更新。
+小结 从公式层面看， GRPO-A 的改动完全发生在 rollout 构造阶段，而非策略优化目标本身。通
+过在 group 内引入有限且自适应的引导样本， GRPO-A 在保持探索能力的同时显著提升了奖励分
+布的稳定性，从而改善了 GRPO 在训练早期及复杂推理任务中的收敛行为 [15]。
+3.3.2 NGRPO ：负信号增强的优势校准与非对称裁剪
+在标准 GRPO 及 Video-R1 的训练过程中，当同一 group 内的所有 rollout 均未获得正奖励
+时，组内奖励分布将退化为常数，导致优势项为零，从而使该group 对策略更新不产生任何梯度贡
+献。这一现象在训练早期或高难度推理任务中尤为常见。为缓解“全错样本无梯度”的问题，Nan
+等人提出了 Negative-enhanced Group Relative Policy Optimization （NGRPO） ，通过对优势计算
+与裁剪策略进行最小化修改，引入可学习的负信号以增强训练稳定性 [16]。
+负信号增强的优势校准 NGRPO 的核心思想是在优势归一化阶段引入一个虚拟的最大奖励参照
+项，而不生成对应的实际 rollout。设原始 group 的奖励集合为 R = {r1, r2, . . . , rG}，NGRPO 将
+其扩展为：
+R′ = R ∪ {rmax}, (30)
+其中 rmax 表示任务定义下的最大奖励上界。基于扩展后的奖励集合，新的均值与标准差被定义为：
+µ′ = 1
+G + 1
+ GX
+i=1
+ri + rmax
+!
+, σ ′ =
+s
+1
+G + 1
+X
+r∈R′
+(r − µ′)2. (31)
+由此，NGRPO 的优势项被重写为：
+A′
+i = ri − µ′
+σ′ + ϵ , (32)
+其中 ϵ 为数值稳定项。通过引入虚拟最优参照，NGRPO 在全错样本场景下为所有 rollout 赋予一
+致的负优势，从而避免梯度完全消失。
+11
+Figure 6: NGRPO 核心机制示意图。通过引入虚拟最大奖励样本， NGRPO 即使在同质性错误群
+体中也能生成学习信号，将失败转化为新的探索机会。 [16]
+非对称裁剪的策略更新 由于负信号增强会使优势项整体偏向负值，直接采用对称的 PPO 裁剪策
+略可能导致训练不稳定。为此，NGRPO 在策略更新阶段引入非对称裁剪机制，对正、负优势分别
+施加不同的裁剪范围。其目标函数可写为：
+LNGRPO(θ) = E
+"(
+min
+ 
+ρi,tA′
+i, (1 + ϵpos)A′
+i
+
+, A ′
+i ≥ 0,
+max
+ 
+ρi,tA′
+i, (1 − ϵneg)A′
+i
+
+, A ′
+i < 0,
+#
+− βDKL(πθ ∥ πref), (33)
+其中 ρi,t 为策略比率，ϵpos 与 ϵneg 分别控制正、负优势的裁剪幅度，且通常满足 ϵneg < ϵ pos。
+小结 从实现层面看， NGRPO 并未对 GRPO 的 rollout 生成方式或奖励函数形式进行修改，其
+改动仅集中于优势归一化与裁剪策略两个环节。通过显式引入负信号并抑制过强的负向梯度更新，
+NGRPO 在保持探索能力的同时显著提升了训练过程的稳定性。由于该方法仅涉及局部公式修改，
+具有较高的工程可嵌入性，适合作为 Video-R1 框架下的稳定性增强模块 [16]。
+3.4 优势计算与梯度聚合的改进：冲突缓解与数值稳定性
+除奖励设计外，优势项的计算与聚合方式也是影响 GRPO 训练稳定性的关键因素。部分研究
+指出，在多样本推理场景中，不同候选输出之间可能产生梯度冲突或数值不稳定问题。
+DaGRPO 从 distinctiveness 的角度出发， 对组内样本进行差异性建模， 以缓解高度相似推理轨
+迹在梯度更新中的相互干扰 [18]。 该方法主要作用于优势项的加权与聚合过程， 相当于对Video-R1
+中基于均值与标准差的优势归一化机制进行了补充。
+Geometric-mean Policy Optimization 则通过改变策略更新中多个概率比值的聚合方式，以几
+何均值替代算术均值，从而降低极端样本对训练过程的影响 [23]。该方法在数值层面增强了策略更
+新的稳定性，但并未引入新的奖励或价值函数。
+MAPO 进一步提出混合不同来源或层级的优势信号， 在保持GRPO 主体结构不变的前提下提
+升优势估计的表达能力 [24]。该方法可被视为对 Video-R1 中优势项设计的一种可嵌入扩展。
+3.4.1 DaGRPO ：基于区分度感知的优势筛选与梯度冲突缓解
+尽管 GRPO 通过组内相对比较在一定程度上缓解了奖励标定问题，但在推理任务中仍可能
+面临显著的梯度冲突现象。当不同 rollout 在语义或推理结构上高度相似、但其优势符号相反时，
+序列级优势被广播至 token 级梯度更新，容易导致参数更新方向相互抵消，从而降低训练效率并
+12
+引发不稳定性。为此，Xie 等人提出了 Distinctiveness-aware Group Relative Policy Optimization
+（DaGRPO） ，从梯度聚合层面对GRPO 的优化过程进行修正 [18]。
+从 GRPO surrogate 到梯度分解 为分析梯度冲突的来源，考虑 GRPO 的 unclipped surrogate
+主梯度项（忽略 clip 与 KL 正则项对分析的影响） ：
+˜JGRPO(θ) = 1
+G
+GX
+i=1
+1
+|oi|
+|oi|X
+t=1
+Ai log πθ(oi,t | q, oi,<t), (34)
+其中 Ai 为 sequence-level 优势，并在序列内共享。对式（34）求梯度，并记
+gi,t ≜ ∇θ log πθ(oi,t | q, oi,<t), (35)
+可得：
+∇θ ˜JGRPO(θ) = 1
+G
+GX
+i=1
+Ai
+|oi|
+|oi|X
+t=1
+gi,t. (36)
+将 group 内样本按优势符号划分为 G+ = {oj | Aj > 0} 与 G− = {ok | Ak < 0}，式（36）可
+等价写为：
+∇θ ˜JGRPO(θ) = 1
+G
+2
+4 X
+oj ∈G+
+Aj
+|oj|
+|oj |X
+t=1
+gj,t +
+X
+ok∈G−
+Ak
+|ok|
+|ok|X
+t=1
+gk,t
+3
+5 . (37)
+当正、负样本在 token 或推理结构上高度相似时，上式中的梯度分量可能发生显著冲突，从而削弱
+有效学习信号。
+区分度感知的样本掩码构造 为抑制低区分度样本导致的梯度干扰， DaGRPO 在梯度聚合阶段引
+入区分度感知的样本掩码。具体而言，引入基于外部评估器的质量评分函数 S(·)，并定义负样本中
+的最高评分 S−
+max 以及正样本中的最低评分 S+
+min。样本掩码 λi 定义为：
+λi =
+8
+><
+>:
+1, o i ∈ G+ and S(oi) − S−
+max ≥ δ,
+1, o i ∈ G− and S+
+min − S(oi) ≥ δ,
+0, otherwise,
+(38)
+其中 δ 为区分度阈值。该设计确保仅当正、负样本在质量上具有充分间隔时，其梯度才会被保留用
+于参数更新。
+区分度加权的梯度聚合 将式（ 38）定义的掩码引入式（37） ，得到rectified policy gradient ：
+∇θ ˜JRect(θ) = 1
+G
+2
+4 X
+oj ∈G+
+λj
+Aj
+|oj|
+|oj |X
+t=1
+gj,t +
+X
+ok∈G−
+λk
+Ak
+|ok|
+|ok|X
+t=1
+gk,t
+3
+5 , (39)
+其中 λj 与 λk 分别对应式（38）中正、负样本的掩码。与原始 GRPO 相比，该修正仅在梯度聚合
+阶段引入了样本级筛选，而未修改奖励或优势的定义。
+13
+Off-policy 混合组与优势重计算（简述） 在训练早期或高难度推理场景下，纯 on-policy 采样可
+能导致 group 内奖励分布高度集中（即 ∀i, R (oi) ≈ 0） ，从而使优势退化。为恢复组内对比结构，
+DaGRPO 引入高质量 off-policy demonstrations 作为推理锚点，并构造混合样本组：
+Gmix = Gon ∪ Goff. (40)
+在混合组中需重新进行组内标准化，因此优势在 Gmix 上重计算为：
+Ai = R(oi) − mean({R(oℓ) | oℓ ∈ Gmix})
+std({R(oℓ) | oℓ ∈ Gmix}) . (41)
+相应地，梯度聚合中的归一化系数由 1/G 替换为 1/|Gmix|，并将正负样本集合替换为 G+
+mix 与
+G−
+mix。最终得到 DaGRPO 的梯度形式：
+∇θ ˜JDaGRPO(θ) = 1
+|Gmix|
+2
+4 X
+oj ∈G+
+mix
+λj
+Aj
+|oj|
+|oj |X
+t=1
+gj,t +
+X
+ok∈G−
+mix
+λk
+Ak
+|ok|
+|ok|X
+t=1
+gk,t
+3
+5 . (42)
+小结 从实现角度看， DaGRPO 并未改变 GRPO 的奖励函数或 PPO-style 的总体优化范式，其
+主要改动集中于梯度聚合层面：通过 distinctiveness-aware 的样本掩码抑制边界样本造成的梯度冲
+突；并在必要时引入少量高质量 off-policy 轨迹作为锚点，以恢复组内对比结构。由于上述修改具
+有明确的模块边界，DaGRPO 可作为 Video-R1 框架下稳定性与鲁棒性增强的可插拔策略 [18]。
+3.4.2 Geometric-mean Policy Optimization （GMPO）
+在标准 GRPO 中，策略梯度的计算基于对序列中各 token 的重要性采样比率进行算术平均。
+这种设计在实践中容易受到极端 token 比率的影响，从而导致梯度波动较大、训练不稳定。为缓解
+这一问题，Zhao 等人提出了 Geometric-mean Policy Optimization（GMPO） ， 通过重新设计token
+级权重的聚合方式来提升数值稳定性 [23]。
+Figure 7: GMPO 和 GRPO 相比。GRPO 优化的是令牌级奖励的算术平均值，而 GMPO 优化的
+是几何平均值 [23]
+14
+GRPO 中的算术平均形式 回顾 GRPO 的 token 级目标，其对同一输出序列 oi 中的 token 采用
+算术平均形式进行聚合：
+JGRPO(θ) = E
+2
+4 1
+G
+GX
+i=1
+1
+|oi|
+|oi|X
+t=1
+ρi,t Ai
+3
+5 , (43)
+其中
+ρi,t = πθ(oi,t | q, oi,<t)
+πθold(oi,t | q, oi,<t) . (44)
+由于每个 token 的 ρi,t 独立参与梯度计算，当序列中存在极端比率时，整体梯度容易被少数 token
+主导。
+几何平均聚合的目标函数 GMPO 将上述算术平均替换为几何平均形式，对同一序列内的 token
+重要性比率进行统一聚合，从而定义新的优化目标：
+JGMPO(θ) = E
+2
+64 1
+G
+GX
+i=1
+0
+@
+|oi|Y
+t=1
+ρi,t Ai
+
+1
+A
+1
+|oi|
+· sgn(Ai)
+3
+75 . (45)
+该形式通过几何平均抑制单个 token 的异常权重，使得整个序列的梯度贡献更加平滑。
+梯度形式的对比 在 GRPO 中，token t 的梯度项由其对应的比率 ρi,t 独立缩放：
+∇θJGRPO = 1
+G
+GX
+i=1
+1
+|oi|
+|oi|X
+t=1
+ρi,t Ai ∇θ log πθ(oi,t), (46)
+而在 GMPO 中，同一序列内所有 token 共享由几何平均得到的统一权重：
+∇θJGMPO = 1
+G
+GX
+i=1
+1
+|oi|
+|oi|X
+t=1
+0
+@
+|oi|Y
+k=1
+ρi,k
+1
+A
+1
+|oi|
+Ai ∇θ log πθ(oi,t). (47)
+小结 通过将 token 级的算术平均替换为序列级的几何平均， GMPO 在不改变奖励函数、优势估
+计或 group 采样机制的前提下， 有效缓解了梯度爆炸与训练不稳定问题。 该方法仅对梯度聚合形式
+进行修改，因此能够以较低的工程成本嵌入现有基于 GRPO 的训练框架中，为提升数值稳定性提
+供了一种简洁而有效的解决方案。
+3.4.3 Mixed Advantage Policy Optimization （MAPO）
+在标准 GRPO 框架中，优势函数 Ai 通常完全由组内相对奖励标准化得到，其数值高度依赖
+当前 batch 的奖励分布。当 group 内样本质量高度集中或奖励噪声较大时，该优势估计容易出现
+方差过大或符号不稳定的问题。为此， Huang 等人提出了 Mixed Advantage Policy Optimization
+（MAPO） ，通过将多种优势信号进行线性融合，以提升训练过程的稳定性与鲁棒性[24]。
+GRPO 中的单一优势估计 回顾 GRPO 的优势定义，其通常采用组内标准化形式：
+Agrp
+i =
+R(oi) − mean
+
+{R(oj)}G
+j=1
+
+std
+
+{R(oj)}G
+j=1
+ . (48)
+该优势仅反映样本在当前 group 中的相对表现，未显式考虑策略更新前后的变化或历史基线信息。
+15
+Figure 8: MAPO 的架构示意图。我们发现轨迹确定性在不同样本间存在差异。通常，我们引入优
+势百分比偏差来替代高确定性元素的优势函数。 我们利用轨迹确定性重加权来根据轨迹确定性动态
+地重新加权优势函数。 [24]
+混合优势的构造 MAPO 引入第二类优势信号 Aref
+i ，用于刻画样本相对于参考策略或历史基线的
+改进程度（例如基于 KL 正则项或价值近似得到） 。 在此基础上，MAPO 将两类优势进行线性融合，
+定义混合优势为：
+Amix
+i = α Agrp
+i + (1 − α) Aref
+i , α ∈ [0, 1], (49)
+其中 α 为权重系数，用于平衡组内相对信号与参考基线信号的贡献。
+基于混合优势的策略目标 将式（ 49）中的混合优势替换原有的 Ai， 即可得到MAPO 的优化目标
+形式：
+JMAPO(θ) = E
+2
+4 1
+G
+GX
+i=1
+1
+|oi|
+|oi|X
+t=1
+min
+ 
+ρi,tAmix
+i , clip(ρi,t, 1 − ϵ, 1 + ϵ)Amix
+i
+
+3
+5 , (50)
+其中 ρi,t 为策略比率，定义方式与 GRPO 保持一致。
+与其他优势改进方法的关系 与 DaGRPO 和 GMPO 不同，MAPO 并未修改梯度聚合方式或 token
+级权重结构，其改动仅发生在优势估计层面。通过引入参考优势信号并进行加权融合， MAPO 在
+保持 GRPO 组内相对比较机制的同时，缓解了单一优势来源带来的方差与不稳定问题。
+小结 由于 MAPO 对 GRPO 的修改局限于优势计算阶段，其整体训练流程、 rollout 方式与策略
+更新接口均保持不变，因此具有较高的工程可嵌入性。在 Video-R1 框架下，该方法可作为对组
+内优势估计的补充，用以提升训练稳定性，尤其适用于奖励噪声较大或 group 内区分度不足的场
+景 [24]。
+3.5 多目标奖励场景下的 GRPO 扩展
+在部分复杂推理任务中，单一标量奖励难以完整刻画模型输出质量。 MO-GRPO 针对多目标
+场景下可能出现的 reward hacking 问题，对 GRPO 的奖励机制进行了扩展 [19]。该方法通过在组
+内相对比较过程中引入多目标奖励信号的平衡机制，使策略更新能够同时考虑多个评价维度。
+从 Video-R1 的视角来看，MO-GRPO 仍然保留了组内相对比较与优势标准化的核心思想，其
+主要改动集中在奖励函数 ri 的构造与聚合方式上，因此在理论上具备较好的可迁移性。
+16
+3.5.1 Multi-Objective Group Relative Policy Optimization （MO-GRPO）
+在实际推理任务中，强化学习目标往往由多个奖励分量共同构成，例如正确性、格式约束、推
+理完整性或安全性等。原始 GRPO 通常通过对多个奖励分量直接求和后再进行组内标准化，从
+而得到单一优势信号。然而， Ichihara 等人指出，该做法在多目标场景下容易引发隐式的 reward
+hacking 问题，即模型在训练过程中倾向于优先优化方差较大的奖励分量，而忽略其他同等重要但
+数值尺度较小的目标 [19]。
+多目标场景下 GRPO 的优势偏置问题 设奖励函数由 K 个分量组成，即
+R(q, o) =
+KX
+k=1
+Rk(q, o), (51)
+则原始 GRPO 的优势通常定义为：
+AGRPO
+g =
+PK
+k=1 Rk(q, og) − meano
+hPK
+k=1 Rk(q, o)
+i
+stdo
+hPK
+k=1 Rk(q, o)
+i . (52)
+Ichihara 等人从统计角度分析表明，当不同奖励分量的方差或相关性存在显著差异时，上述优势定
+义会使高方差奖励在策略更新中占据主导地位，从而导致多目标优化失衡 [19]。
+MO-GRPO 的优势重构思想 为缓解上述问题， MO-GRPO 提出将“先聚合、再标准化”的流
+程调整为“先标准化、再聚合” 。具体而言，MO-GRPO 首先对每一个奖励分量在 group 内单独进
+行标准化：
+˜Rk(q, og) = Rk(q, og) − meano[Rk(q, o)]
+stdo[Rk(q, o)] , k = 1, . . . , K, (53)
+随后，将各个标准化后的奖励分量进行求和，得到多目标优势：
+AMO
+g =
+KX
+k=1
+˜Rk(q, og). (54)
+该设计确保每个奖励分量在策略更新中具有相近的贡献尺度， 从而避免由奖励数值分布差异引发的
+隐式偏置。
+基于多目标优势的策略优化 在得到多目标优势 AMO
+g 后，MO-GRPO 保持原有 GRPO 的策略优
+化形式不变，仅将优势项进行替换：
+JMO-GRPO(θ) = E
+2
+4 1
+G
+GX
+g=1
+1
+|og|
+|og|X
+t=1
+min
+
+ρg,tAMO
+g , clip(ρg,t, 1 − ϵ, 1 + ϵ)AMO
+g
+
+3
+5 − βDKL(πθ∥πref),
+(55)
+其中 ρg,t 为策略比率，ϵ 为截断超参数，β 控制 KL 正则项强度。
+理论性质与讨论 MO-GRPO 具有良好的正仿射不变性，即对任意奖励分量 R′
+k = akRk + bk
+（ak > 0） ，其诱导的策略偏好保持不变[19]。从实现角度看，MO-GRPO 对 GRPO 的修改仅发生
+在优势计算阶段，未引入额外的采样或训练结构，因此具有较高的工程可嵌入性。在 Video-R1 框
+架下，该方法可直接用于多奖励信号并存的训练场景，为缓解 reward hacking 与目标失衡问题提
+供了一种简洁而有效的解决方案。
+17
+3.6 总结对比
+Table 1: GRPO 优化方法总览与对比
+方法 主要修改位置 优化目标 核心解决问题
+CPPO [9] Rollout 采样与复用 训练加速 Rollout 冗 余、
+样本效率低
+GFPO [26] Rollout 过滤与选择 推理简洁性、训练效率 冗 余 推 理、 to-
+ken 浪费
+R1-VL (StepGRPO) [11] Reward 设计（step-wise） 推理结构建模 仅 终 态 奖 励 导
+致的推理偏差
+GRPO-A [15] 梯度引导与 group 筛选 训练稳定性 Bad group 干
+扰、 错误梯度方
+向
+NGRPO [16] 优势信号增强 训练稳定性 全 错 样 本 下 优
+势退化
+DaGRPO [18] 梯度聚合（mask） 梯度冲突缓解 正 负 样 本 梯 度
+相互抵消
+GMPO [23] 梯度权重聚合 数值稳定性 Token-level 极
+端 比 率 导 致 不
+稳定
+MAPO [24] 优势计算（混合） 鲁棒性 单 一 优 势 噪 声
+过大
+MO-GRPO [19] 多目标优势构造 多目标公平性 高 方 差 奖 励
+主 导 （ reward
+hacking）
+表 1 总结了近年来可直接嵌入 GRPO 框架的主要优化方法。可以看出，这些方法在保持
+Video-R1 训练范式不变的前提下， 从rollout 采样、reward 设计、 优势构造以及梯度聚合等不同层
+面出发，针对训练效率、稳定性与多目标优化等问题提出了互补性的改进方案。
+4 扩展与前景：跳出 Video-R1 框架的 GRPO 结构性探索
+在当前项目中， GRPO 的使用严格继承自 Video-R1 所定义的整体训练框架，其核心假设包
+括：基于可训练策略模型的参数更新、以 group 为基本单元的相对比较机制，以及以完整输出或短
+推理序列作为主要优化对象。在此前章节中所讨论的优化方法，均在上述框架假设成立的前提下，
+对奖励函数或优势计算等局部环节进行了改进。然而，近年来围绕 GRPO 的部分研究工作从更根
+本的层面重新审视了这些假设，并在训练范式、优化目标或推理单位等方面进行了结构性重构。
+这类研究通常不再满足 Video-R1 所采用的整体训练设定，因此难以直接复用于当前项目中的
+代码级优化。但与此同时，它们为未来在资源与工程条件允许的情况下跳出现有 Video-R1 框架、
+探索更通用或更任务适配的推理优化范式提供了重要理论启发。 总体而言， 这类论文并不将GRPO
+视为一种固定形式的策略优化算法，而是将其理解为一种基于相对比较思想的抽象优化范式，并据
+此探索不同的实现路径。
+18
+4.1 打破纯策略梯度与 group 假设的训练范式重构
+部分工作从训练范式层面对传统 GRPO 进行了根本性改写，使其不再局限于“纯策略梯度 +
+group 相对比较”的经典设定。Hybrid Group Relative Policy Optimization 引入了 actor–critic 混
+合结构，将 GRPO 作为 actor 更新过程中的一部分，而非完整的策略优化机制 [12]。该设计在理
+论上缓解了仅依赖相对奖励信号进行策略更新所带来的不稳定性，但也使整体训练流程显著偏离
+Video-R1 所采用的无 critic 训练范式。
+另一项更为激进的探索来自 Single-stream Policy Optimization ，该方法直接放弃了 group 作
+为基本优化单元的假设，转而在单一策略流上完成决策与更新 [25]。在该框架下，组内相对比较不
+再是必要条件，GRPO 的核心思想被重新吸收进更一般的策略优化结构中。这类方法表明，group
+假设本身并非策略优化的必然选择，而是一种与具体任务和训练目标相关的设计取舍。
+4.2 打破参数更新必要性的非传统优化路径
+除对训练结构的重构外，亦有研究从更基本的层面质疑“参数更新是强化学习不可或缺环节”
+的假设。Training-Free GRPO 保留了组内相对比较的思想，但不再通过梯度下降更新策略模型参
+数，而是通过对多条推理轨迹的相对评估与筛选来影响模型后续的推理行为 [13]。在这一设定中，
+GRPO 更接近一种推理行为重构或经验提炼机制，而非传统意义上的策略优化算法。
+该方向的理论启发在于， GRPO 的核心价值可能并不完全依赖于参数空间中的优化过程，而
+更多体现在对不同推理结果进行相对比较、归纳与选择的机制设计上。然而，这种非参数化的实现
+方式已完全脱离 Video-R1 所依赖的训练流程，难以在当前项目中直接采用。
+4.3 从只重视最终结果走向轨迹与序列级建模
+另一类第三类工作对 GRPO 的优化单位进行了重新定义，不再将最终输出视为唯一或最合适
+的比较对象。Trajectory-wise GRPO 将组内相对比较机制扩展至完整推理轨迹或动作序列，使策
+略优化过程能够显式感知推理的中间阶段与时序结构 [14]。在此基础上， Group Sequence Policy
+Optimization 进一步将优化目标提升至序列层级，为长序列推理与多阶段决策任务提供了新的建
+模视角 [21]。
+这类方法通常需要重新定义 rollout 形式、优势计算方式以及策略更新接口，其训练流程与
+Video-R1 当前以短推理片段和最终答案为核心的设计存在显著差异。尽管如此，这些研究在理论
+上揭示了一个重要事实：当推理或决策任务本身具有明显的阶段性结构时，仅依赖最终输出进行相
+对比较可能不足以充分刻画模型行为。
+4.4 跨领域任务中的 GRPO 适配性探索
+除对优化范式本身的重构外，部分研究还从应用层面探索了 GRPO 在非通用推理任务中的适
+配性。例如，MedGround-R1 将 GRPO 引入医学图像定位与语义对齐任务，其奖励设计与推理目
+标均围绕医学领域的空间语义一致性展开 [20]。另一方面，基于 GRPO 的漏洞检测研究则将该范
+式应用于安全领域，通过任务特定的推理结构与评估标准提升模型在漏洞识别场景中的表现 [22]。
+这些工作表明，GRPO 作为一种相对比较驱动的优化思想，具有跨任务迁移的潜在能力。然
+而，由于不同领域在推理结构、奖励定义和评价标准上的显著差异，这类方法往往需要对整体任务
+建模进行深度定制，其设计目标已不再与 Video-R1 所关注的视频推理任务保持一致。
+5 总结
+本文围绕“基于 Video-R1 的视频交通异常行为检测项目”中的强化学习训练环节，系统调研
+并梳理了 Group Relative Policy Optimization （GRPO）在视频推理任务中的应用方式与可行优化
+路径。报告以 Video-R1 提出的 Temporal GRPO（T-GRPO）为基线，先明确 GRPO 的核心机制
+19
+（组内相对比较、规则奖励、标准化优势与 PPO-style clipped 目标） ，并进一步说明Video-R1 如
+何通过“时间顺序 vs 打乱顺序”的对比设定引入时间奖励， 以减弱模型对局部帧shortcut 的依赖、
+强化时序推理能力。
+在此基础上，本文结合当前项目的实际实现，归纳了项目内已采用的两类局部优化：其一是
+diﬀiculty-aware 的 advantage reweighting， 利用多次rollout 的正确率统计估计样本难度， 并将该难
+度作为权重注入优势项， 以提升对高难度样本的学习强度； 其二是长度奖励/惩罚的自适应 shaping，
+根据难度动态调整对推理长度的偏好，在“正确性”与“推理简洁性”之间形成更稳定的折中，从
+而缓解冗余推理或过度简化造成的训练不稳定。
+作为本文的重点内容，报告进一步围绕“在不改变 Video-R1 训练范式（SFT + GRPO ）前提
+下，如何直接复用到工程代码”的目标，将近年来 GRPO 的可嵌入改进方法总结为四类，并通过
+公式层面对其修改位置进行了对照说明：
+训练效率导向（rollout 复用与冗余削减） ：CPPO 通过优势阈值/剪枝思想，将策略目标中的
+求和项从全量 completion 更新改为对高贡献样本的选择性更新，从而降低前后向计算开销并提升
+吞吐；GFPO 则在 group 内引入基于目标属性的 Top- ￿ k 过滤与优势掩码机制，在保持采样结构
+的情况下“只从最有价值的样本学习” ，并可结合难度自适应地动态调整￿ k ，达到“sample more,
+think less ”的效果。
+推理结构导向（ step-wise 奖励与过程约束） ：StepGRPO 将优化粒度从 trajectory-level 扩展
+至 reasoning step-level ，通过 StepRAR（关键中间步骤匹配的准确性奖励）与 StepR VR（完整性
+与逻辑顺序的有效性奖励）为推理过程提供更稠密、更结构敏感的训练信号，从而缓解仅依赖终态
+奖励带来的推理偏差问题。
+稳定性与鲁棒性导向（bad group 与负信号建模） ：GRPO-A 通过在 group 内引入部分引导样
+本并自适应调节引导长度，在不改变 GRPO 目标函数的前提下改善早期训练的奖励可分性与稳定
+性；NGRPO 则通过引入虚拟最大奖励参照项重构均值与方差，使“全错 group”仍产生一致的负
+优势信号，并配合非对称裁剪抑制过强的负向梯度，从而避免优势退化导致的无梯度问题。
+优势计算与梯度聚合改进（冲突缓解与数值稳定性） ：DaGRPO 从梯度冲突出发，将 GRPO
+的梯度项显式分解为正 /负样本贡献，并通过 distinctiveness-aware 的样本掩码筛选边界样本，降
+低“相似但符号相反”的梯度抵消；同时可通过混合 off-policy demonstrations 作为锚点恢复组内
+对比结构。GMPO 通过几何均值聚合 token-level 比率，抑制极端 token 权重主导更新造成的不稳
+定；MAPO 则通过混合不同来源的优势信号，降低单一 group 标准化优势在噪声或区分度不足场
+景下的方差问题。对于多目标场景， MO-GRPO 将“先聚合再标准化”改为“先标准化再聚合” ，
+缓解高方差奖励分量主导更新导致的 reward hacking 与目标失衡。
+最后，本文进一步讨论了“跳出 Video-R1 框架”的结构性探索方向，指出部分研究通过引入
+actor–critic 混合结构、放弃 group 假设、采用非参数化的 training-free 路径或将优化单位提升到
+轨迹/序列级，展示了 GRPO 作为“相对比较思想”的更一般化实现方式；同时，医学与安全等
+跨领域应用也表明 GRPO 在任务适配上具有迁移潜力，但往往需要深度重构任务建模与训练流程，
+因而不适合作为当前项目阶段的直接代码级优化方案。
+综上，本文完成了从 Video-R1 基线（GRPO/T-GRPO）到“可直接工程复用的局部改进方
+法”的系统梳理，并给出了清晰的“修改位置—目标—问题”对照框架。该结论可为后续项目的
+优化决策提供依据：在维持现有训练范式与工程可控性的前提下，可优先从 rollout 复用/筛选、
+step-wise 奖励、bad group 稳定化、以及优势/梯度聚合改进等模块化方向逐步迭代；若未来资源
+与目标允许进一步追求范式升级， 则可参考第三类结构性工作对整体训练流程与推理粒度进行更大
+范围的重构探索。
+References
+[1] Ouyang, Long, et al. Training language models to follow instructions with human feedback.
+Advances in Neural Information Processing Systems , 35, 27730–27744, 2022.
+20
+[2] Shao, Zhihong, et al. DeepSeekMath: Pushing the limits of mathematical reasoning in open
+language models. arXiv preprint arXiv:2402.03300 , 2024.
+[3] Guo, Daya, et al. DeepSeek-R1: Incentivizing reasoning capability in LLMs via reinforcement
+learning. arXiv preprint arXiv:2501.12948 , 2025.
+[4] Team, Kimi, et al. Kimi K1.5: Scaling reinforcement learning with LLMs. arXiv preprint
+arXiv:2501.12599, 2025.
+[5] Hasan, Mahmudul, et al. Learning temporal regularity in video sequences. In Proceedings of
+the IEEE Conference on Computer Vision and Pattern Recognition (CVPR) , 2016.
+[6] Liu, Wen, et al. Future frame prediction for anomaly detection: A new baseline. In Proceedings
+of the IEEE Conference on Computer Vision and Pattern Recognition (CVPR) , 2018.
+[7] Dilek, Esma, and Murat Dener. An overview of transformers for video anomaly detection.
+Neural Computing and Applications , 2025.
+[8] Deshpande, Kapil, et al. Anomaly detection in surveillance videos using transformer-based
+attention model. In International Conference on Neural Information Processing . Springer
+Nature Singapore, 2022.
+[9] Lin, Zhihang, et al. CPPO: Accelerating the training of group relative policy optimization-
+based reasoning models. arXiv preprint arXiv:2503.22342 , 2025.
+[10] Feng, Kaituo, et al. Video-R1: Reinforcing video reasoning in MLLMs. arXiv preprint
+arXiv:2503.21776, 2025.
+[11] Zhang, Jingyi, et al. R1-VL: Learning to reason with multimodal large language models via
+step-wise group relative policy optimization. arXiv preprint arXiv:2503.12937 , 2025.
+[12] Sane, Soham. Hybrid group relative policy optimization: A multi-sample approach to enhanc-
+ing policy optimization. arXiv preprint arXiv:2502.01652 , 2025.
+[13] Cai, Yuzheng, et al. Training-free group relative policy optimization. arXiv preprint
+arXiv:2510.08191, 2025.
+[14] Chen, Zengjue, et al. TGRPO: Fine-tuning vision-language-action models via trajectory-wise
+group relative policy optimization. arXiv preprint arXiv:2506.08440 , 2025.
+[15] Guo, Yongxin, et al. GRPO-A: Guided group relative policy optimization with adaptive
+guidance. arXiv preprint arXiv:2508.13023 , 2025.
+[16] Nan, Gongrui, et al. NGRPO: Negative-enhanced group relative policy optimization. arXiv
+preprint arXiv:2509.18851 , 2025.
+[17] Mroueh, Youssef, et al. Revisiting group relative policy optimization: Insights into on-policy
+and off-policy training. arXiv preprint arXiv:2505.22257 , 2025.
+[18] Xie, Xuan, et al. DaGRPO: Rectifying gradient conflict in reasoning via distinctiveness-aware
+group relative policy optimization. arXiv preprint arXiv:2512.06337 , 2025.
+[19] Ichihara, Yuki, et al. MO-GRPO: Mitigating reward hacking of group relative policy optimiza-
+tion on multi-objective problems. arXiv preprint arXiv:2509.22047 , 2025.
+21
+[20] Xu, Huihui, et al. MedGround-R1: Advancing medical image grounding via spatial-semantic
+rewarded group relative policy optimization. In International Conference on Medical Im-
+age Computing and Computer-Assisted Intervention (MICCAI) . Springer Nature Switzerland,
+2025.
+[21] Zheng, Chujie, et al. Group sequence policy optimization. arXiv preprint arXiv:2507.18071 ,
+2025.
+[22] Simoni, Marco, et al. Improving LLM reasoning for vulnerability detection via group relative
+policy optimization. arXiv preprint arXiv:2507.03051 , 2025.
+[23] Zhao, Yuzhong, et al. Geometric-mean policy optimization. arXiv preprint arXiv:2507.20673 ,
+2025.
+[24] Huang, Wenke, et al. MAPO: Mixed advantage policy optimization. arXiv preprint
+arXiv:2509.18849, 2025.
+[25] Xu, Zhongwen, and Zihan Ding. Single-stream policy optimization. arXiv preprint
+arXiv:2509.13232, 2025.
+[26] Shrivastava, Vaishnavi, et al. Sample more to think less: Group filtered policy optimization
+for concise reasoning. arXiv preprint arXiv:2508.09726 , 2025.
+22

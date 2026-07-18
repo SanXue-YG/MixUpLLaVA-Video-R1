@@ -55,7 +55,7 @@
 | 阶段 | 做什么 |
 |------|--------|
 | **Phase 3** | 模块库：尽量复现调研报告可嵌入方法，统一注册、可扩展 |
-| **Phase 4** | **优化方案选择器**（能力交付）：勾选模块 / 填超参 / 生成 run 配置；**不强制立刻开训** |
+| **Phase 4** | **优化方案选择器**（能力交付）：默认勾选 **B+CPPO**；再叠其它模块；**不强制立刻开训** |
 | **Phase 5** | **评测流水线**（脚本 + 报告模板）：协议对齐上游四基准；**实跑可延后** |
 | **Phase 6** | **总控制台 Notebook**：汇总前期成果；用户直观调参 + 选策略 → 先训基线出报告 → 再训优化方案并对比 |
 
@@ -104,7 +104,7 @@ OUT_BASE    = {PROJECT_DIR}/outputs
 Phase 0  Drive/仓库对齐 + 文档     ████████░░  Week 1（文档 ✅；Drive 勾选可补）
 Phase 1  Colab 基线 / CPPO(g8)    ██████████  Week 1–2 ✅ 打通可复用训练流程
 Phase 2  默认档位 + 环境可调参   ██████████  Week 2 ✅ 默认=C1；可覆盖加载
-Phase 3  MixUp 模块库（可扩展）    ████████░░  Week 2–4 复现调研可嵌入方案
+Phase 3  MixUp 模块库（可扩展）    ██████████  Week 2–4 ✅ 调研可嵌入方案已注册
 Phase 4  优化方案选择器（能力）    ████████░░  Week 4–5 可勾选；开训可延后
 Phase 5  评测流水线（模板/脚本）   ██████████  Week 5–7 四基准协议；实跑可延后
 Phase 6  总控制台 Notebook         ██████████  Week 7–8 调参→基线→优化对比→报告
@@ -250,18 +250,20 @@ mixup/
 ├── __init__.py
 ├── registry.py              # 模块注册表：name → apply(config)
 ├── config.py                # MixUpConfig / 开关与超参 schema
-├── project_baseline.py      # B：难度感知 + 长度 shaping（M1 默认开）
-├── cppo.py                  # ✅ Phase1 已通
+├── project_baseline.py      # B：难度感知 + 长度 shaping（**默认开**）
+├── cppo.py                  # ✅ Phase1 已通（**默认开**）
 ├── gfpo.py
 ├── ngrpo.py
 ├── mo_grpo.py               # 多目标 normalize-then-sum（准确率向备选）
 ├── dagrpo.py / gmpo.py / mapo.py / grpo_a.py  # P1–P2，可先 stub
 ├── trainer_mixup.py         # 将开关打到上游 trainer
 └── presets/                 # 可选预设 JSON/YAML（非强制最终方案）
-    ├── m1_baseline_b.yaml
-    ├── speed_cppo.yaml      # 对齐 Phase1 C2
-    └── ...                  # 用户或文档推荐组合
+    ├── m1_baseline_b.yaml   # 默认 = B+CPPO
+    ├── speed_cppo.yaml      # 消融：仅 CPPO（显式关 B）
+    └── ...
 ```
+
+> **项目默认保留**：B 与 CPPO 在后续策略选择中**默认包含**；仅配置/选择器里显式关闭时才去掉。
 
 | 优先级 | 模块 | 调研位置 | Phase3 交付 |
 |--------|------|----------|-------------|
@@ -270,15 +272,16 @@ mixup/
 | P2 | DaGRPO、GMPO、MAPO、GRPO-A | §3.3–3.4 | 实现或清晰 stub + 接口 |
 | 预留 | StepGRPO 等 | §3.2 / §4 | 文档 + 接口占位，不强求首期完整 |
 
-| # | 任务 | 说明 |
-|---|------|------|
-| 3.1 | `registry` + `MixUpConfig` | 布尔开关 / 超参；未知模块报错清晰 |
-| 3.2 | 各模块 `apply()` | 尽量局部改 advantage / mask / prune / reward，贴合调研「修改位置」 |
-| 3.3 | 打补丁到 Drive `REPO` | 复用 Phase1「覆盖 trainer → deepspeed 训练」流程 |
-| 3.4 | 扩展性 | 新方法 = 新文件 + `register()`，不必改 Notebook 训练主循环 |
-| 3.5 | 文档 | `docs/MIXUP_MODULES.md`：模块列表、开关名、与调研章节对照 |
+| # | 任务 | 说明 | 状态 |
+|---|------|------|------|
+| 3.1 | `registry` + `MixUpConfig` | 布尔开关 / 超参；未知模块报错清晰 | ✅ |
+| 3.2 | 各模块 `apply()` | 局部改 advantage / mask / prune / reward | ✅ P0–P1 完整；P2 可用/stub |
+| 3.3 | 打补丁到 Drive `REPO` | `apply_mixup_to_repo` + `patches/*_mixup.py` | ✅ |
+| 3.4 | 扩展性 | 新方法 = 新文件 + `@register()` | ✅ |
+| 3.5 | 文档 | `docs/MIXUP_MODULES.md` + `doc/` 原论文 | ✅ |
 
-**验收**：至少 B + CPPO +（GFPO 或 NGRPO 或 MO-GRPO 之一）可通过配置启用；新增模块有注册示例。
+**验收**：B + CPPO + GFPO/NGRPO/MO-GRPO 均可配置启用；`python -m mixup.tests_smoke` 通过。  
+**本地进度**：**Phase 3 已完成**（模块库 + 论文入库；无需开训）。
 
 ---
 
@@ -286,29 +289,32 @@ mixup/
 
 **定位变更**：不再锁定「唯一最终配方 M5」。开源主成果改为 **可组合的 GRPO 优化实验台**：用户按目标自选模块组合，沿 **Phase1 已打通的 Colab+Drive 流程**（默认 C1，部署环境可改参）快速试其它算法。
 
-**默认基线定义**：**M1 = 仅开启项目基线增强 B**。Phase1 的 A2 / C2 作历史对照，不必重跑。
+**默认基线定义**：**M1 = 项目默认栈 = B（自研质量向）+ CPPO（原定效率目标）**。  
+加开 GFPO / NGRPO / MO-GRPO 等时，**除非显式写 `false`，否则 B 与 CPPO 保持开启**。  
+Phase1 的 A2（纯 GRPO）/ C2（仅 CPPO）作历史/消融对照，见 `presets/ablation_*`、`speed_cppo`。
 
 **本阶段重点**：把「选什么、怎么配」做成可调用能力（供 Phase 6 总控制台接入）。**正式训 M1 / 自选组合不强制在本阶段完成**——需要时再通过总控制台启动。
 
 | # | 任务 | 说明 |
 |---|------|------|
-| 4.1 | **选择器 UI/配置** | Notebook 单元或 YAML：勾选模块 + 填超参；生成 `run_id`、配置快照、`outputs/` 路径约定 |
-| 4.2 | **预设（可选）** | `speed` / `stable` / `quality` 等，见 `ACCURACY_ORIENTED_OPTIONS.md` |
+| 4.1 | **选择器 UI/配置** | Notebook 单元或 YAML：勾选模块 + 填超参；**默认勾选 B+CPPO**；生成 `run_id`、配置快照 |
+| 4.2 | **预设（可选）** | `m1`（B+CPPO）、`speed`（仅 CPPO 消融）、`m5` / `m5q` 等；见 `ACCURACY_ORIENTED_OPTIONS.md` |
 | 4.3 | **训练入口封装** | `apply_mixup` → 复用 Phase1 deepspeed 流程；冒烟可选（短 `max_steps`），完整训延后 |
-| 4.4 | 报告模板 | `docs/PHASE4_REPORT.md`（或由 Phase6 统一生成）：开关快照、训练期对照表头 |
+| 4.4 | 报告模板 | 开关快照须标注是否关掉了项目默认（B/CPPO） |
 | 4.5 | （按需）训 M1 / 自选 | **非门禁**；有项目需要或验收演示时再跑 |
 
 **选择器示意（Notebook）**：
 
 ```python
 MIXUP = dict(
-    project_baseline=True,   # M1 默认 True
-    cppo=False, cppo_pruning_rate=0.5,
+    # 可不写：默认 project_baseline=True, cppo=True
+    ngrpo=True,              # 叠在 B+CPPO 上
+    # project_baseline=False,  # 仅当明确要去掉 B 时
+    # cppo=False,              # 仅当明确要去掉 CPPO 时
     gfpo=False, gfpo_top_k=4,
-    ngrpo=False,
     mo_grpo=False,
 )
-# → apply_mixup(MIXUP) → run_training(...)  # 同 Phase1；Phase6 总控调用
+# → MixUpConfig.from_dict(MIXUP) → apply_mixup → run_training(...)
 ```
 
 #### 预计成果（Phase 4）
@@ -403,7 +409,7 @@ MIXUP = dict(
 
 - [x] Phase 1：A2 / C2（g8）无中断对比 + `docs/PHASE1_REPORT.md`（**流程已打通**）
 - [x] **Phase 2**：默认 C1 → `configs/colab_c1.yaml` + `mixup.config_loader` + `docs/MEMORY_BENCHMARK_COLAB.md`
-- [ ] **Phase 3**：MixUp **模块库**（B/CPPO/GFPO/NGRPO/MO-GRPO… + registry，可扩展）
+- [x] **Phase 3**：MixUp **模块库**（B/CPPO/GFPO/NGRPO/MO-GRPO… + registry；见 `docs/MIXUP_MODULES.md`）
 - [ ] **Phase 4**：**优化方案选择器**（能力）；完整开训可延后至总控制台按需执行
 - [ ] **Phase 5**：**评测流水线**（脚本/模板）；实跑可延后
 - [ ] **Phase 6**：**总控制台 Notebook**（调参 → 基线报告 → 优化对比报告）+ Release
@@ -460,6 +466,7 @@ MIXUP = dict(
 | Phase 1 报告 | [`docs/PHASE1_REPORT.md`](./docs/PHASE1_REPORT.md) |
 | Phase 1 原始日志 | `docs/phase1运行记录.ipynb` |
 | **Phase 2 默认档 / 改参** | [`configs/colab_c1.yaml`](./configs/colab_c1.yaml) · [`docs/MEMORY_BENCHMARK_COLAB.md`](./docs/MEMORY_BENCHMARK_COLAB.md) |
+| **Phase 3 模块库** | [`docs/MIXUP_MODULES.md`](./docs/MIXUP_MODULES.md) · [`doc/`](./doc/README.md) 原论文 |
 | **准确率向备选方案** | [`docs/ACCURACY_ORIENTED_OPTIONS.md`](./docs/ACCURACY_ORIENTED_OPTIONS.md) |
 | 上游评测脚本 | TinyLLaVA-Video-R1 `scripts/eval/{videomme,mvbench,mlvu,mmvu}.sh` |
 
@@ -475,7 +482,7 @@ MIXUP = dict(
 | Phase 0 | 2026-07-16 | 2026-07-18 | 文档侧 ✅ | Drive 勾选可补 |
 | Phase 1 | 2026-07-17 | 2026-07-25 | **2026-07-17** | A2/C2 g8 ✅；见 `docs/PHASE1_REPORT.md` |
 | Phase 2 | 2026-07-18 | 2026-07-23 | **2026-07-18** | 默认 C1 + loader + 换环境清单 |
-| Phase 3 | 2026-07-20 | 2026-08-10 | | **模块库**（可扩展复现调研方案） |
+| Phase 3 | 2026-07-20 | 2026-08-10 | **2026-07-18** | 模块库 + doc 原论文 + smoke ✅ |
 | Phase 4 | 2026-08-05 | 2026-08-22 | | **选择器能力**（开训可延后） |
 | Phase 5 | 2026-08-20 | 2026-09-10 | | **评测流水线**（实跑可延后） |
 | Phase 6 | 2026-09-10 | 2026-09-20 | | **总控制台** + Release |
@@ -495,4 +502,4 @@ MIXUP = dict(
 
 ---
 
-*最后更新：2026-07-18 · Phase 1–2 ✅ · 后续：模块库 → 选择器 → 评测流水线 → **总控制台***
+*最后更新：2026-07-18 · Phase 1–3 ✅ · 后续：选择器 → 评测流水线 → **总控制台***

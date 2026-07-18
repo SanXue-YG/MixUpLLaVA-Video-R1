@@ -1,0 +1,10 @@
+# M5-style optional preset: B + CPPO + NGRPO + GFPO
+project_baseline: true
+cppo: true
+cppo_pruning_rate: 0.5
+gfpo: true
+gfpo_top_k: 4
+gfpo_metric: shortest
+ngrpo: true
+ngrpo_r_max: 2.0
+mo_grpo: false

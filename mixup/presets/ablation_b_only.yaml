@@ -1,0 +1,6 @@
+# 消融：仅 B（显式关闭 CPPO）— 勿与默认 M1 混用
+project_baseline: true
+cppo: false
+gfpo: false
+ngrpo: false
+mo_grpo: false

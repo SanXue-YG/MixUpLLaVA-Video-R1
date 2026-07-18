@@ -1,0 +1,771 @@
+NGRPO: NEGATIVE-ENHANCEDGROUPRELATIVE
+POLICYOPTIMIZATION
+Gongrui Nan, Siye Chen, Jing Huang, Mengyu Lu
+Dexun Wang, Chunmei Xie, Weiqi Xiong, Xianzhou Zeng
+Qixuan Zhou, Yadong Li, Xingzhong Xu
+Ant Group
+Shanghai, China
+{nangongrui.ngr}@antgroup.com
+ABSTRACT
+RLVR has enhanced the reasoning capabilities of Large Language Models (LLMs)
+across various tasks. However, GRPO, a representative RLVR algorithm, suf-
+fers from a critical limitation: when all responses within a group are either en-
+tirely correct or entirely incorrect, the model fails to learn from these homoge-
+neous responses. This is particularly problematic for homogeneously incorrect
+groups, where GRPO’s advantage function yields a value of zero, leading to null
+gradients and the loss of valuable learning signals. To overcome this issue, we
+proposeNGRPO(Negative-enhancedGroupRelativePolicyOptimization), an
+algorithm designed to convert homogeneous errors into robust learning signals.
+First, NGRPO introducesAdvantage Calibration. This mechanism hypothesizes
+the existence of a virtual maximum-reward sample during advantage calculation,
+thereby altering the mean and variance of rewards within a group and ensuring that
+the advantages for homogeneously incorrect samples are no longer zero. Second,
+NGRPO employsAsymmetric Clipping, which relaxes the update magnitude for
+positive samples while imposing stricter constraints on that of negative samples.
+This serves to stabilize the exploration pressure introduced by the advantage cal-
+ibration. Our experiments on Qwen2.5-Math-7B demonstrate that NGRPO sig-
+nificantly outperforms baselines such as PPO, GRPO, DAPO, and PSR-NSR on
+mathematical benchmarks including MATH500, AMC23, and AIME2025. These
+results validate NGRPO’s ability to learn from homogeneous errors, leading to
+stable and substantial improvements in mathematical reasoning. Our code is avail-
+able athttps://github.com/nangongrui-ngr/NGRPO.
+1 INTRODUCTION
+Large Reasoning Models (LRMs) (Cobbe et al., 2021; Comanici et al., 2025; Team et al., 2025)
+are renowned for their ability to reason about complex problems and have emerged as one of the
+most active research areas in artificial intelligence. Reinforcement Learning (RL) serves as an ef-
+fective paradigm, playing an increasingly crucial role in enhancing the reasoning capabilities of
+LRMs. Among RL methods, algorithms like Proximal Policy Optimization (PPO) (Schulman et al.,
+2017) are widely adopted for their stability and sample efficiency in complex, multi-step domains
+such as mathematical reasoning. The RLVR (Reinforcement Learning with Verifiable Rewards)
+technique (Guo et al., 2025; Jaech et al., 2024; Lambert et al., 2024; Liu et al., 2025; Yue et al.,
+2025b) replaces the critic model in PPO with verifiable rewards, which simplifies the training pro-
+cess and enhances its stability. Group Relative Policy Optimization (GRPO) (Shao et al., 2024) is
+a representative RLVR algorithm. During training, GRPO generates multiple responses for a single
+prompt, which are then partitioned into a group. It determines the magnitude and direction of the
+policy optimization gradient by calculating and normalizing the rewards of the responses within the
+group. This dual capability of learning from both positive and negative samples has led to substantial
+improvements in the model’s reasoning abilities.
+Despite its impressive performance, GRPO suffers from a critical limitation: when a group is ho-
+mogeneous, containing either all correct or all incorrect responses, the model fails to learn from it.
+1
+arXiv:2509.18851v1  [cs.LG]  23 Sep 2025
+This is because the variance of rewards within such a group is zero, which results in normalized
+advantages of zero and, consequently, a null gradient. As a result, the policy model misses valuable
+learning signals. This limitation is particularly detrimental for homogeneously incorrect groups, as
+the model is unable to learn from collective failures. Consequently, problems that the policy model
+failed to solve pre-training are unlikely to be solved post-training. In such cases, the policy model
+should be encouraged to engage in further exploration to find new solutions, rather than abandoning
+the problem.
+PSR-NSR (Zhu et al., 2025) acknowledges the importance of negative samples, positing that learn-
+ing from them increases the information entropy of the model’s responses, where higher entropy
+signifies stronger exploration capabilities (Anthony et al., 2017; Havrilla et al., 2024; Xiong et al.,
+2025b). PSR-NSR assigns a fixed negative advantage to negative samples and a fixed positive ad-
+vantage to positive ones, aiming to enhance learning from negative samples and boost exploration
+by down-weighting the advantages of positive samples. However, this fixed-advantage assignment
+can lead to training collapse, particularly when faced with homogeneously negative samples (Xiong
+et al., 2025a) (as shown in Figure 2). Therefore, a core challenge remains: how to effectively utilize
+these difficult negative samples to drive exploration and improve the model’s reasoning capabilities,
+all while maintaining training stability.
+To address this challenge, we introduceNGRPO(Negative-enhancedGroupRelativePolicy
+Optimization), an algorithm designed to convert signals from homogeneous failures into robust
+exploration signals. NGRPO introduces anAdvantage Calibrationmechanism. By incorporating
+a virtual, maximum-reward sample into the standard GRPO advantage calculation, it ensures that
+advantages for homogeneously negative samples become negative. Without altering the gradient di-
+rection, this mechanism also reduces the gradient magnitude for positive samples while increasing it
+for negative ones, thereby further enhancing the model’s exploration capabilities. Furthermore, we
+employ anAsymmetric Clippingmechanism. This mechanism stabilizes the exploration pressure
+introduced by Advantage Calibration by relaxing the update constraints on positive samples while
+imposing stricter ones on negative samples. Our main contributions are as follows:
+1. We introduce the Advantage Calibration mechanism, which enables the model to learn
+from homogeneously negative samples and enhances its exploration capabilities.
+2. We employ the Asymmetric Clipping mechanism, which works in concert with Advantage
+Calibration to stabilize the training process.
+3. Experimental results on Qwen2.5-Math-7B (Yang et al., 2024) demonstrate that our method
+significantly outperforms baselines such as PPO and GRPO on mathematical bench-
+marks, including MATH500 (Hendrycks et al., 2021), AMC23 (Ouyang et al., 2022), and
+AIME2025 (Li et al., 2024).
+To solve the problem, we need to convert the numbers from base $b$ to base 10 and then check the divisibility condition. ... So, the sum of all integer bases $b > 9$ for which $17_b$ is a divisor of $97_b$ is 85.
+To solve this problem, we need to find the integer bases b > 9 for which 17_b is a divisor of 97_b. … The sum of all integer bases b > 9 for which 17_b is a divisor of 97_b is 23.
+To solve this problem, we need to convert the numbers $17_{b}$ and $97_{b}$ from base $b$ to base 10 and then determine the values of $b$ for which $17_{b}$ is a divisor of $97_{b}$. … Therefore, the final answer is 92.
+Response1Response2Response3
+Find the sum of all integer bases $b>9$ for which $17_{b}$ is a divisor of $97_{b}$.
+Query
+Fake golden response.Calculate advantage: TrueBackward: False
+Virtual Maximum-Reward Sample
+GRPO/DAPOReward: 0, 0, 0Mean: 0Std: 1Advantage: 0, 0, 0
+NGRPOReward: 0, 0, 0, 1Mean: 0.25Std: 0.5Advantage: -0.5, -0.5, -0.5, 1.5
+Filter
++++
+Figure 1: Schematic of NGRPO’s core mechanism. By introducing a virtual maximum-reward
+sample, NGRPO can generate learning signals even from homogeneously incorrect groups, turning
+failures into new opportunities for exploration.
+2
+2 PRELIMINARIES
+GRPO (Group Relative Policy Optimization) (Shao et al., 2024), much like PPO (Proximal Policy
+Optimization) (Schulman et al., 2017), is a policy gradient-based reinforcement learning algorithm,
+with GRPO building upon the foundation of PPO. Firstly, it dispenses with the critic model, employ-
+ing verifiable rewards instead to assess the quality of a response. Secondly, it generates multiple
+responses for each prompt, which are assigned to a single group. By normalizing the rewards of
+responses within the same group, it computes a relative advantage for each response, which is then
+used to optimize the policy model. The objective function of GRPO is shown in Equation 1.
+JGRP O(θ) =Eq∼P(Q),{o i}G
+i=1∼πθold(o|q)
+
+
+
+1
+G
+GX
+i=1
+1
+|oi|
+|oi|X
+t=1
+
+min
+ πθ (oi,t |q, oi,<t)
+πθold (oi,t |q, oi,<t) Ai,
+clip
+ πθ (oi,t |q, oi,<t)
+πθold (oi,t |q, oi,<t) ,1−ϵ,1 +ϵ
+
+Ai
+
+−βD KL [πθ||πref ]
+
+,
+(1)
+DKL [πθ||πref ] = πref (oi,t |q, oi,<t)
+πθ (oi,t |q, oi,<t) −log πref (oi,t |q, oi,<t)
+πθ (oi,t |q, oi,<t) −1,(2)
+Ai = ri −mean ({r1, r2, . . . , rG})
+std ({r1, r2, . . . , rG}) .(3)
+Here,π θ represents the current policy model, andπ θold (πθref) represents the old (reference) policy
+model.D KL denotes the KL divergence between the current and reference policy models. It ensures
+that the policy model does not deviate too far from the reference model during updates. The term
+Arepresents the intra-group advantage. Its calculation depends on the mean and variance of the
+rewardsr i, for each response within the group. Within a group, responses with rewards higher
+than the average receive a positive advantage, while those with lower rewards receive a negative
+advantage.
+When encountering a homogeneous group, where all rewards are identical—the mean reward equals
+each individual reward, causing the advantage for every sample in that group to be zero. Although
+GRPO’s reward normalization numerically stabilizes the training process, it diminishes the utiliza-
+tion of training samples, particularly for datasets with either extremely high or extremely low dif-
+ficulty. DAPO (Dynamic Sampling Policy Optimization) (Yu et al., 2025) employs a pre-filtering
+mechanism that discards both homogeneously correct and homogeneously incorrect samples, pre-
+venting them from participating in the policy model’s optimization. DAPO improves training effi-
+ciency and avoids the issue of high gradient variance caused by sparse advantages, thereby further
+stabilizing the training process and enhancing the model’s capabilities. However, it still fails to fully
+utilize the available data, particularly the homogeneously incorrect samples.
+3 MOTIVATION
+As analyzed in (Yue et al., 2025a), reinforcement learning may not be able to impart new capabilities
+to a model beyond what it acquired during pre-training. Consequently, LUFFY (Yan et al., 2025)
+replaces one response in a group with an output from a more powerful model, using the new rea-
+soning trajectory to instruct the model under training. Similarly, RELIFT (Ma et al., 2025) imparts
+new knowledge to the model through a seamless transition between RL and SFT. However, the re-
+cent work of PSR-NSR (Zhu et al., 2025) demonstrates the importance and potential of encouraging
+model exploration. It shows that even without introducing new models or responses, a model can
+achieve significant performance gains solely through reinforcement learning, a benefit attributed to
+learning from negative samples.
+To ensure that samples in a homogeneous group have non-zero advantages, a natural approach is to
+dispense with the normalization process of the original GRPO. This is precisely the strategy adopted
+by PSR-NSR, which, for mathematical tasks, assigns a fixed advantage of -1 to negative samples and
+3
+0.1 to positive samples, as shown in Equation 4.
+Ai =
+0.1, y i is equal toy
+−1, y i is not equal toy (4)
+wherey i is the model’s outputted answer andyis the correct answer.
+However, we observe that the stability of model training is highly sensitive to the values of these
+fixed advantages. Specifically, a larger magnitude for the negative advantage, relative to the positive
+one, leads to greater training instability, as illustrated in Figure 2. Conversely, reducing the magni-
+tude of the negative advantage suppresses the model’s exploration capabilities. Consequently, this
+method struggles to strike a trade-off between exploration and training stability.
+Similarly, experiments in (Xiong et al., 2025a) corroborate this finding. For the REINFORCE (Hu,
+2025) algorithm, applying either advantage normalization or filtering out homogeneous negative
+samples allows its performance to approach that of GRPO. However, if homogeneous negative sam-
+ples are retained without advantage normalization, the algorithm’s performance degrades severely.
+In other words, enabling the model to learn from homogeneously incorrect groups seems to neces-
+sitate advantage normalization to prevent the training process from collapsing.
+Therefore, our objective is to devise a method that enables learning from homogeneously incorrect
+groups while retaining the stability benefits of advantage normalization.
+0 20 40 60 80 100 120 140
+Step
+0
+100
+200
+300
+400
+500
+600
+700fully solved question cnt
+PSR-NSR(stable)
+PSR-NSR(collapse)
+(a) Fully solved questions.
+0 20 40 60 80 100 120 140
+Step
+50
+60
+70
+80
+90
+100
+110fully unsolved question cnt
+PSR-NSR(stable)
+PSR-NSR(collapse) (b) Fully unsolved questions.
+0 20 40 60 80 100 120 140
+Step
+910
+920
+930
+940
+950
+960
+970
+980at least solve one time question cnt PSR-NSR(stable)
+PSR-NSR(collapse)
+(c) Questions solved at least once.
+0 20 40 60 80 100 120 140
+Step
+1000
+1500
+2000
+2500
+3000
+3500
+4000incorrect count
+PSR-NSR(stable)
+PSR-NSR(collapse) (d) Total incorrect responses.
+Figure 2: The fixed negative advantage in PSR-NSR can easily lead to training collapse. The figure
+compares a stable run (blue) with a collapsed run (orange). The collapse is characterized by a
+sharp decline in the number of fully solved questions and a simultaneous surge in the number of
+incorrect responses. This highlights the risks of training on homogeneously incorrect groups without
+advantage normalization.
+4
+4 NEGATIVE-ENHANCEDGROUPRELATIVEPOLICYOPTIMIZATION
+(NGRPO)
+To address the limitations of GRPO, we introduce Negative-enhanced Group Relative Policy Op-
+timization (NGRPO), an extension designed to effectively learn from failure and promote robust
+exploration, as illustrated in Figure 1.
+4.1 ADVANTAGECALIBRATION
+To resolve the zero-advantage issue in homogeneous-incorrect groups, NGRPO introduces aVirtual
+Maximum-Reward Sample. The core idea is to augment the advantage calculation for every group
+by conceptually adding a sample that achieved the maximum possible reward,r max. This virtual
+sample is not generated by the policy; only its reward value is used to enrich the normalization
+statistics.
+LetR={r 1, . . . , rG}be the set of rewards from theGsampled responses. We define an augmented
+reward setR ′ =R ∪ {rmax}. The NGRPO advantage,A ′
+i, is then calculated by standardizingr i
+over this augmented set:
+A′
+i = ri −µ ′
+R
+σ′
+R +ϵ std
+,(5)
+whereµ ′
+R andσ ′
+R are the mean and standard deviation of the augmented rewards:
+µ′
+R = 1
+G+ 1
+
+
+
+
+GX
+j=1
+rj
+
+ +r max
+
+ , σ ′
+R =
+s
+1
+G+ 1
+X
+r∈R′
+(r−µ ′
+R)2.(6)
+The objective function of NGRPO is shown in Equation 7.
+JN GRP O(θ) =Eq∼P(Q),{o i}G
+i=1∼πθold(o|q)
+
+
+
+1
+G
+GX
+i=1
+1
+|oi|
+|oi|X
+t=1
+
+min
+ πθ (oi,t |q, oi,<t)
+πθold (oi,t |q, oi,<t) A′
+i,
+clip
+ πθ (oi,t |q, oi,<t)
+πθold (oi,t |q, oi,<t) ,1−ϵ,1 +ϵ
+
+A′
+i
+
+,
+(7)
+Conceptually, introducingr max creates a dynamic, batch-dependent baseline for advantage calcula-
+tion that is always above the observed rewards. This guarantees a meaningful negative advantage in
+homogeneous-incorrect groups, where GRPO would stagnate. Furthermore, the mechanism is in-
+herently adaptive: its impact on both the mean and the standard deviation applies a stronger push for
+exploration when group performance is uniformly low, while minimally affecting high-performing
+groups. This approach preserves training stability by modulating the magnitude of advantages to
+encourage exploration without altering their fundamental sign.
+The adaptive behavior of NGRPO is illustrated across three representative cases in Figure 3:
+•Case 1: Homogeneous-Incorrect Group (0% correct).GRPO provides no learning sig-
+nal (zero advantage). In contrast, NGRPO generates a uniform negative advantage, en-
+abling the model to learn even from complete failure.
+•Case 2: Low-Accuracy Mixed Group (12.5% correct).NGRPO significantly re-
+balances the advantages. It dampens the advantage for the correct sample (from 2.47 to
+1.76) while increasing the penalty for incorrect ones (from -0.35 to -0.50). This strong
+adjustment promotes exploration when model performance is low.
+•Case 3: High-Accuracy Mixed Group (87.5% correct).In this high-accuracy scenario,
+NGRPO’s adjustments are minimal, slightly reducing positive advantages while moderately
+increasing the penalty for the single failure. This demonstrates the method’s adaptability,
+favoring exploitation when performance is already strong.
+5
+Sample 1 Sample 2 ... Sample 8
+Sample Index
+2
+1
+0
+1
+2
+Advantage Value
+0.00 0.00 0.00 0.00
+-0.35 -0.35 -0.35 -0.35
+(a) Case 1: Homogeneous-Incorrect (0% Correct)
+Correct Incorrect 1 ... Incorrect 7
+Sample Type / Index
+2.47
+-0.35 -0.35 -0.35
+1.76
+-0.50 -0.50 -0.50
+(b) Case 2: Low-Accuracy (12.5% Correct)
+Correct 1 ... Correct 7 Incorrect
+Sample Type / Index
+0.35 0.35 0.35
+-2.47
+0.33 0.33 0.33
+-2.67
+(c) Case 3: High-Accuracy (87.5% Correct)
+Comparison of Advantages: GRPO vs. NGRPO
+GRPO NGRPO
+Figure 3: Comparison of advantage distributions for GRPO and NGRPO across three representative
+scenarios with a group size ofG= 8. NGRPO generates learning signals from failures and adap-
+tively re-balances advantages to promote exploration.
+4.2 ASYMMETRICCLIPPING
+In standard GRPO, the sum of advantages across a group is zero ( PG
+i=1 Ai = 0). The introduction
+ofr max, however, ensures the sum of NGRPO advantages is always negative ( PG
+i=1 A′
+i <0). This
+creates a persistent negative bias in the policy update, effectively increasing policy entropy and
+encouraging exploration. While beneficial, this strong exploratory pressure can increase the risk of
+training instability.
+To counteract this, we useAsymmetric Clippingto adjust the PPO clipping range. Instead of the
+standard symmetric range[1−ϵ,1 +ϵ], we define separate clipping boundaries for positive and
+negative advantages. The modified clipped objective is:
+LN-CLIP
+t (θ) =
+min(ρt(θ)A′
+i,(1 +ϵpos)A′
+i)ifA ′
+i ≥0
+max(ρt(θ)A′
+i,(1−ϵ neg)A′
+i)ifA ′
+i <0 (8)
+whereϵ pos andϵ neg are distinct hyperparameters. To stabilize the strong exploratory drive from our
+virtual sample, we set a tighter constraint on negative updates (ϵ neg = 0.16) while allowing more
+latitude for positive updates (ϵ pos = 0.24), following Yu et al. (2025). This asymmetric design is
+crucial for balancing the strong, persistent exploratory pressure introduced by our virtual sample.
+By penalizing incorrect paths more cautiously while strongly rewarding correct ones, NGRPO can
+harness the benefits of enhanced exploration without compromising the training stability essential
+for effective learning.
+5 EXPERIMENTS ANDRESULTS
+5.1 EXPERIMENTALSETUP
+5.1.1 TRAINING ANDEVALUATION
+All models were trained for 20 epochs on the MATH dataset (Hendrycks et al., 2021) using a cluster
+of 8 NVIDIA H100 GPUs. Key hyperparameters included a learning rate of 1e-6, a global batch
+size of 1024, a maximum prompt length of 1024, and a maximum response length of 3072 for
+the Qwen2.5-Math-7B model (Yang et al., 2024). Models were subsequently evaluated on three
+mathematical reasoning benchmarks: MATH500, AMC23 (Ouyang et al., 2022), and the highly
+challenging AIME2025 (Li et al., 2024).
+5.1.2 METRICS
+We evaluated all models using the Unbiased Pass@kmetric (Chen et al., 2021), generatingN= 256
+samples per problem with a temperature of 0.6 and top-p of 0.95. To provide a single, holistic mea-
+6
+sure of performance, we report the Pass@kArea Under the Curve (AUC). This metric aggregates
+performance across allkvalues (k∈ {1,2, . . . ,256}) by applying the trapezoidal rule to the Pass@k
+curve on a log-log scale, offering a comprehensive view of a model’s overall problem-solving capa-
+bility.
+5.1.3 BASELINES
+We benchmarked NGRPO against several prominent RL algorithms: Proximal Policy Optimization
+(PPO) (Schulman et al., 2017), Group Relative Policy Optimization (GRPO) (Shao et al., 2024),
+Dispersed Advantage Policy Optimization (DAPO) (Yu et al., 2025), and PSR-NSR (Zhu et al.,
+2025).
+5.2 COMPARATIVEANALYSIS
+As shown in Table 1 and Figure 4, NGRPO demonstrates superior performance across the board. On
+the highly challenging AIME2025 dataset, NGRPO achieves the highest Pass@kAUC, indicating
+a strong and balanced improvement in both low-kaccuracy and high-kexploration. This result
+strongly supports our central hypothesis: enabling a model to learn from collective failure is critical
+for unlocking new reasoning capabilities, especially on problems far beyond its initial grasp. In
+contrast, methods like GRPO and DAPO, which filter out homogeneous-incorrect groups, appear
+to hit a performance ceiling, likely due to their limited exposure to difficult problem variations.
+NGRPO’s consistent state-of-the-art results underscore the effectiveness of transforming failure into
+a productive learning signal.
+Table 1: Performance comparison of various RL methods on the Qwen2.5-Math-7B model. Results
+are reported as percentages (%). The best results are inbold, and the second-best are underlined .
+Method Pass@kPass@k
+k= 1k= 2k= 4k= 8k= 16k= 32k= 64k= 128k= 256AUC
+AIME2025
+PPO 9.78 14.25 18.57 22.65 26.86 31.30 35.58 39.94 46.67 27.17
+GRPO 9.99 13.83 18.03 22.41 26.75 31.61 37.58 44.78 53.33 28.33
+PSR-NSR 9.30 13.68 18.32 23.11 28.06 33.53 39.43 44.98 50.00 28.85
+DAPO 10.04 14.31 19.12 24.39 29.75 35.18 40.8346.86 53.33 30.27
+NGRPO (Ours)10.90 15.46 20.25 25.25 30.0834.87 40.57 48.31 60.00 31.28
+AMC
+PPO 59.57 67.75 74.36 80.03 85.20 90.05 93.90 96.10 97.50 83.24
+GRPO 59.90 67.06 73.07 78.30 82.62 86.46 90.17 93.18 95.00 81.04
+PSR-NSR62.0570.23 76.72 82.10 86.54 90.85 94.92 97.93 100.0085.04
+DAPO 59.67 68.33 75.49 81.37 86.04 89.49 92.52 95.38 97.50 83.40
+NGRPO (Ours) 61.69 70.24 77.50 83.80 88.90 92.97 96.12 98.36 100.00 86.09
+MA TH
+PPO76.91 82.8186.81 89.63 91.73 93.32 94.52 95.42 96.10 90.09
+GRPO 76.17 81.34 85.12 87.92 90.06 91.73 93.10 94.24 95.18 88.65
+PSR-NSR 75.89 81.84 86.04 89.05 91.30 93.05 94.41 95.48 96.32 89.66
+DAPO 76.00 81.78 85.91 88.91 91.18 92.90 94.16 95.11 95.86 89.49
+NGRPO (Ours) 76.73 82.70 86.82 89.78 92.01 93.70 94.95 95.87 96.50 90.31
+Figure 5 illustrates the policy entropy dynamics(Wang et al., 2025). NGRPO maintains a healthy,
+stable entropy that gradually converges, indicating a robust balance between exploration and ex-
+ploitation. This contrasts sharply with DAPO, GRPO, and PPO, whose entropies continuously
+decline, signaling a progressive loss of exploratory capacity. Conversely, PSR-NSR maintains a
+significantly higher entropy, reflecting an aggressive and often unstable exploratory pressure, which
+aligns with the performance collapse shown in Figure 2. NGRPO’s entropy profile is thus consistent
+with its design for stable, adaptive exploration.
+7
+1 2 4 8 16 32 64 128 256
+k
+10
+20
+30
+40
+50
+60Pass@k (%)
+AIME2025
+ppo
+grpo
+psr_nsr
+dapo
+ngrpo
+1 2 4 8 16 32 64 128 256
+k
+60
+65
+70
+75
+80
+85
+90
+95
+100Pass@k (%)
+AMC
+ppo
+grpo
+psr_nsr
+dapo
+ngrpo
+1 2 4 8 16 32 64 128 256
+k
+75
+80
+85
+90
+95Pass@k (%)
+MATH
+ppo
+grpo
+psr_nsr
+dapo
+ngrpo
+Figure 4: Pass@kperformance curves for different RL methods on AIME2025, AMC, and MATH
+test sets, using the Qwen2.5-Math-7B model. NGRPO consistently outperforms or matches the
+strongest baselines across varyingkvalues.
+5.3 ABLATIONSTUDIES
+To dissect the contributions of NGRPO’s key components, we conducted a series of ablation stud-
+ies, with results summarized in Table 2. The baseline GRPO, which lacks all three of our pro-
+posed modifications, establishes the performance floor. Introducing only the asymmetric clipping
+range yields marginal gains, while adding the virtual maximum reward by itself provides a more
+substantial boost, confirming its effectiveness as a standalone enhancement. Crucially, the combi-
+nation of asymmetric clipping and the virtual reward demonstrates a strong synergistic effect, out-
+performing the sum of their individual contributions. The full NGRPO model—which also retains
+homogeneous-incorrect groups—achieves the best performance, validating our claim that learning
+from these challenging samples is essential for maximizing model capability.
+Table 2: Ablation study of NGRPO components on Qwen2.5-Math-7B. The baseline (✗✗✗) corre-
+sponds to the standard GRPO algorithm.
+Advantage Calibration Learning from failures Asymmetric Clipping Pass@kAUC
+AIME2025 AMC
+✗ ✗ ✗28.33 81.04
+✗ ✗ ✓28.48 81.22
+✓ ✗ ✗29.56 83.85
+✓ ✗ ✓30.54 84.37
+✓ ✓ ✓31.28 86.09
+6 RELATEDWORK
+6.1 REINFORCEMENTLEARNING FORLLM ALIGNMENT
+Reinforcement Learning (RL) has become a cornerstone for aligning Large Language Models
+(LLMs) with human preferences and task objectives.
+Proximal Policy Optimization (PPO) (Schulman et al., 2017), in particular, has emerged as a de
+facto standard due to its stability and ease of implementation, achieving notable success in complex
+tasks like code generation and mathematical reasoning. While alternative paradigms like Direct
+Preference Optimization (DPO) (Rafailov et al., 2023) have gained traction by bypassing explicit
+reward modeling, PPO and its variants remain a critical tool for capability enhancement, especially
+in domains like mathematical reasoning that require extensive exploration to discover correct solu-
+tions. Our work builds upon the PPO framework, aiming to enhance its efficiency and robustness in
+challenging, low-reward scenarios.
+8
+0 20 40 60 80 100 120 140
+Step
+0.0
+0.1
+0.2
+0.3
+0.4
+0.5
+0.6actor/entropy loss
+DAPO
+GRPO
+NGRPO
+PPO
+PSR-NSR
+Figure 5: Entropy changes during training. NGRPO achieves a steady increase after entropy de-
+creases.
+6.2 RLVR
+A significant challenge in applying PPO to LLMs is training a stable and accurate critic network
+to estimate the value function, which is notoriously difficult in the vast state-space of language. To
+address this, a line of critic-less RL algorithms has emerged. Group Relative Policy Optimization
+(GRPO) (Shao et al., 2024) is a prime example, eliminating the critic network by calculating ad-
+vantages based on the relative ranking of rewards within a sampled group. This design significantly
+simplifies the training pipeline. However, as we have analyzed, GRPO’s efficacy is contingent on
+reward variance. In homogeneous groups, where all samples receive the same reward, the advantage
+function collapses to zero, stalling the learning process and exposing a fundamental limitation of
+this otherwise efficient approach.
+6.3 LEARNING FROMNEGATIVESAMPLES
+Effectively utilizing negative samples (i.e., incorrect responses) is a core challenge in RL for rea-
+soning. Existing methods have addressed GRPO’s stagnation problem with varying trade-offs.
+DAPO (Yu et al., 2025) proposed filtering out homogeneous groups—a strategy of avoidance that
+discards valuable learning opportunities. In contrast, PSR-NSR (Zhu et al., 2025) adopted a more
+direct approach, assigning a fixed negative advantage to all incorrect responses. While demonstrat-
+ing the potential of negative signals, this hard-coded penalty lacks normalization and can destabilize
+training, leading to performance collapse.
+NGRPO offers a more principled solution. It neither discards negative samples like DAPO nor in-
+troduces an un-normalized penalty like PSR-NSR. By introducing a virtual maximum-reward sam-
+ple, NGRPO generates a meaningful, adaptive, and non-zero advantage for homogeneous-incorrect
+groups. Paired with an asymmetric clipping mechanism for stability, our method transforms failure
+into a robust and effective learning signal. This places NGRPO as a more robust and stable paradigm
+for learning from failure within the GRPO framework.
+7 CONCLUSION
+We proposed NGRPO.Advantage Calibrationaddresses the issue of homogeneous error groups
+being unable to participate in training in GRPO by introducing a virtual maximum reward example,
+while also improving the model’s exploration capabilities. To accommodate this enhanced explo-
+ration capability, we employedAsymmetric Clipping, allowing more freedom for the gradients of
+positive examples while constraining the gradients of negative examples to ensure training stability.
+Extensive experiments demonstrated the effectiveness of our proposed method.
+We will continue to explore the boundaries of model capabilities and validate our proposed method
+on more models and datasets.
+9
+REFERENCES
+Thomas Anthony, Zheng Tian, and David Barber. Thinking fast and slow with deep learning and
+tree search.Advances in neural information processing systems, 30, 2017.
+Mark Chen, Jerry Tworek, Heewoo Jun, Qiming Yuan, Henrique Ponde De Oliveira Pinto, Jared
+Kaplan, Harri Edwards, Yuri Burda, Nicholas Joseph, Greg Brockman, et al. Evaluating large
+language models trained on code.arXiv preprint arXiv:2107.03374, 2021.
+Karl Cobbe, Vineet Kosaraju, Mohammad Bavarian, Mark Chen, Heewoo Jun, Lukasz Kaiser,
+Matthias Plappert, Jerry Tworek, Jacob Hilton, Reiichiro Nakano, et al. Training verifiers to
+solve math word problems.arXiv preprint arXiv:2110.14168, 2021.
+Gheorghe Comanici, Eric Bieber, Mike Schaekermann, Ice Pasupat, Noveen Sachdeva, Inderjit
+Dhillon, Marcel Blistein, Ori Ram, Dan Zhang, Evan Rosen, et al. Gemini 2.5: Pushing the
+frontier with advanced reasoning, multimodality, long context, and next generation agentic capa-
+bilities.arXiv preprint arXiv:2507.06261, 2025.
+Daya Guo, Dejian Yang, Haowei Zhang, Junxiao Song, Ruoyu Zhang, Runxin Xu, Qihao Zhu,
+Shirong Ma, Peiyi Wang, Xiao Bi, et al. Deepseek-r1: Incentivizing reasoning capability in llms
+via reinforcement learning.arXiv preprint arXiv:2501.12948, 2025.
+Alex Havrilla, Yuqing Du, Sharath Chandra Raparthy, Christoforos Nalmpantis, Jane Dwivedi-Yu,
+Maksym Zhuravinskyi, Eric Hambro, Sainbayar Sukhbaatar, and Roberta Raileanu. Teaching
+large language models to reason with reinforcement learning.arXiv preprint arXiv:2403.04642,
+2024.
+Dan Hendrycks, Collin Burns, Saurav Kadavath, Akul Arora, Steven Basart, Eric Tang, Dawn Song,
+and Jacob Steinhardt. Measuring mathematical problem solving with the math dataset.arXiv
+preprint arXiv:2103.03874, 2021.
+Jian Hu. Reinforce++: A simple and efficient approach for aligning large language models.arXiv
+preprint arXiv:2501.03262, 2025.
+Aaron Jaech, Adam Kalai, Adam Lerer, Adam Richardson, Ahmed El-Kishky, Aiden Low, Alec
+Helyar, Aleksander Madry, Alex Beutel, Alex Carney, et al. Openai o1 system card.arXiv
+preprint arXiv:2412.16720, 2024.
+Nathan Lambert, Jacob Morrison, Valentina Pyatkin, Shengyi Huang, Hamish Ivison, Faeze Brah-
+man, Lester James V Miranda, Alisa Liu, Nouha Dziri, Shane Lyu, et al. Tulu 3: Pushing frontiers
+in open language model post-training.arXiv preprint arXiv:2411.15124, 2024.
+Jia Li, Edward Beeching, Lewis Tunstall, Ben Lipkin, Roman Soletskyi, Shengyi Huang, Kashif
+Rasul, Longhui Yu, Albert Q Jiang, Ziju Shen, et al. Numinamath: The largest public dataset in
+ai4maths with 860k pairs of competition math problems and solutions.Hugging Face repository,
+13:9, 2024.
+Zichen Liu, Changyu Chen, Wenjun Li, Penghui Qi, Tianyu Pang, Chao Du, Wee Sun Lee,
+and Min Lin. Understanding r1-zero-like training: A critical perspective.arXiv preprint
+arXiv:2503.20783, 2025.
+Lu Ma, Hao Liang, Meiyi Qiang, Lexiang Tang, Xiaochen Ma, Zhen Hao Wong, Junbo Niu,
+Chengyu Shen, Runming He, Bin Cui, et al. Learning what reinforcement learning can’t: In-
+terleaved online fine-tuning for hardest questions.arXiv preprint arXiv:2506.07527, 2025.
+Long Ouyang, Jeffrey Wu, Xu Jiang, Diogo Almeida, Carroll Wainwright, Pamela Mishkin, Chong
+Zhang, Sandhini Agarwal, Katarina Slama, Alex Ray, et al. Training language models to fol-
+low instructions with human feedback.Advances in neural information processing systems, 35:
+27730–27744, 2022.
+Rafael Rafailov, Archit Sharma, Eric Mitchell, Christopher D Manning, Stefano Ermon, and Chelsea
+Finn. Direct preference optimization: Your language model is secretly a reward model.Advances
+in neural information processing systems, 36:53728–53741, 2023.
+10
+John Schulman, Filip Wolski, Prafulla Dhariwal, Alec Radford, and Oleg Klimov. Proximal policy
+optimization algorithms.arXiv preprint arXiv:1707.06347, 2017.
+Zhihong Shao, Peiyi Wang, Qihao Zhu, Runxin Xu, Junxiao Song, Xiao Bi, Haowei Zhang,
+Mingchuan Zhang, YK Li, Yang Wu, et al. Deepseekmath: Pushing the limits of mathemati-
+cal reasoning in open language models.arXiv preprint arXiv:2402.03300, 2024.
+Kimi Team, Angang Du, Bofei Gao, Bowei Xing, Changjiu Jiang, Cheng Chen, Cheng Li, Chenjun
+Xiao, Chenzhuang Du, Chonghua Liao, et al. Kimi k1. 5: Scaling reinforcement learning with
+llms.arXiv preprint arXiv:2501.12599, 2025.
+Shenzhi Wang, Le Yu, Chang Gao, Chujie Zheng, Shixuan Liu, Rui Lu, Kai Dang, Xionghui Chen,
+Jianxin Yang, Zhenru Zhang, et al. Beyond the 80/20 rule: High-entropy minority tokens drive
+effective reinforcement learning for llm reasoning.arXiv preprint arXiv:2506.01939, 2025.
+Wei Xiong, Jiarui Yao, Yuhui Xu, Bo Pang, Lei Wang, Doyen Sahoo, Junnan Li, Nan Jiang, Tong
+Zhang, Caiming Xiong, et al. A minimalist approach to llm reasoning: from rejection sampling
+to reinforce.arXiv preprint arXiv:2504.11343, 2025a.
+Wei Xiong, Jiarui Yao, Yuhui Xu, Bo Pang, Lei Wang, Doyen Sahoo, Junnan Li, Nan Jiang, Tong
+Zhang, Caiming Xiong, et al. A minimalist approach to llm reasoning: from rejection sampling
+to reinforce.arXiv preprint arXiv:2504.11343, 2025b.
+Jianhao Yan, Yafu Li, Zican Hu, Zhi Wang, Ganqu Cui, Xiaoye Qu, Yu Cheng, and Yue Zhang.
+Learning to reason under off-policy guidance.arXiv preprint arXiv:2504.14945, 2025.
+An Yang, Beichen Zhang, Binyuan Hui, Bofei Gao, Bowen Yu, Chengpeng Li, Dayiheng Liu, Jian-
+hong Tu, Jingren Zhou, Junyang Lin, et al. Qwen2. 5-math technical report: Toward mathematical
+expert model via self-improvement.arXiv preprint arXiv:2409.12122, 2024.
+Qiying Yu, Zheng Zhang, Ruofei Zhu, Yufeng Yuan, Xiaochen Zuo, Yu Yue, Weinan Dai, Tiantian
+Fan, Gaohong Liu, Lingjun Liu, et al. Dapo: An open-source llm reinforcement learning system
+at scale.arXiv preprint arXiv:2503.14476, 2025.
+Yang Yue, Zhiqi Chen, Rui Lu, Andrew Zhao, Zhaokai Wang, Shiji Song, and Gao Huang. Does re-
+inforcement learning really incentivize reasoning capacity in llms beyond the base model?arXiv
+preprint arXiv:2504.13837, 2025a.
+Yu Yue, Yufeng Yuan, Qiying Yu, Xiaochen Zuo, Ruofei Zhu, Wenyuan Xu, Jiaze Chen, Chengyi
+Wang, TianTian Fan, Zhengyin Du, et al. Vapo: Efficient and reliable reinforcement learning for
+advanced reasoning tasks.arXiv preprint arXiv:2504.05118, 2025b.
+Xinyu Zhu, Mengzhou Xia, Zhepei Wei, Wei-Lin Chen, Danqi Chen, and Yu Meng. The surprising
+effectiveness of negative reinforcement in llm reasoning.arXiv preprint arXiv:2506.01347, 2025.
+A APPENDIX
+A.1 TRAININGPROCESSANALYSIS
+To provide deeper insight into the training dynamics of NGRPO compared to baseline methods, we
+analyze several key metrics throughout the training process.
+A.1.1 RESPONSELENGTH
+Figure 6 shows that during training (left), NGRPO and DAPO generate longer responses because
+filtering homogeneous-correct groups forces them to focus on more challenging problems requiring
+longer reasoning chains. During evaluation (right), response length correlates with policy entropy.
+PSR-NSR produces the longest responses, while the lengths for DAPO, GRPO, and PPO steadily
+shrink. NGRPO’s ability to first decrease and then stabilize its response length suggests it avoids
+collapsing into overly simplistic strategies, retaining its capacity for complex reasoning.
+11
+0 20 40 60 80 100 120 140
+Step
+550
+600
+650
+700
+750
+800
+850
+900response length/mean
+DAPO
+GRPO
+NGRPO
+PPO
+PSR-NSR
+(a) Mean response length during training.
+0 20 40 60 80 100 120 140
+Step
+580
+600
+620
+640
+660
+680val/response length/mean
+DAPO
+GRPO
+NGRPO
+PPO
+PSR-NSR (b) Mean response length during evaluation.
+Figure 6: Response length dynamics during training for different reinforcement learning methods.
+A.1.2 REWARD ANDADVANTAGE
+Figure 7 shows that the lower average rewards for NGRPO and DAPO (left) are an expected artifact
+of their data filtering strategy, which removes high-reward, homogeneous-correct groups from the
+training data. The lower average advantage of NGRPO (right) is also an intended consequence of
+its design. The virtualr max sample systematically raises the reward baseline, creating a stronger
+negative signal to drive exploration. Similarly, PSR-NSR’s lower advantage stems from its use of a
+fixed, un-normalized penalty for incorrect samples.
+0 20 40 60 80 100 120 140
+Step
+0.4
+0.5
+0.6
+0.7
+0.8
+0.9critic/rewards/mean
+DAPO
+GRPO
+NGRPO
+PPO
+PSR-NSR
+(a) Reward
+0 20 40 60 80 100 120 140
+Step
+0.6
+0.5
+0.4
+0.3
+0.2
+0.1
+0.0
+critic/advantages/mean
+DAPO
+GRPO
+NGRPO
+PPO
+PSR-NSR (b) Advantage
+Figure 7: Reward and Advantage dynamics during training for different reinforcement learning
+methods.
+A.2 IMPACT OFVIRTUALREWARDMAGNITUDE ANDCOUNT
+We conducted an ablation study to validate our design choices for the virtual reward mechanism,
+with results in Table 3. The findings confirm that using the task’s maximum reward (r max = 1.0)
+is optimal; a minimum reward impairs learning, while a medium reward provides insufficient ex-
+ploratory pressure. The table also shows that adding more than one virtual reward leads to excessive
+and unproductive exploration, degrading performance. Therefore, a single virtualrmax sample strikes
+the optimal balance between effective exploration and training stability.
+12
+Table 3: Ablation studies on the magnitude and number of virtual rewards, evaluated by Pass@k
+AUC.
+Impact of Magnitude Impact of Count
+Magnitude AUC Count AUC
+AIME2025
+max reward31.28 131.28
+min reward 29.06 2 30.96
+medium reward 30.39 4 28.85
+AMC
+max reward86.09 186.09
+min reward 84.29 2 84.79
+medium reward 84.98 4 84.21
+13

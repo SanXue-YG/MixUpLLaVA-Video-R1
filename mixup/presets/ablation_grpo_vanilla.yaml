@@ -1,0 +1,6 @@
+# 消融：对齐 Phase1 A2 纯 GRPO（显式关闭 B 与 CPPO）
+project_baseline: false
+cppo: false
+gfpo: false
+ngrpo: false
+mo_grpo: false

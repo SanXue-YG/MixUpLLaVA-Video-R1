@@ -19,26 +19,28 @@ Windows 本机原生 DeepSpeed 训练流程不稳定，**不作为正式训练�
 
 | 模块 | 作用 |
 |------|------|
-| 项目基线增强（B） | Difficulty-aware advantage + 自适应长度 reward（**M1 默认基线**） |
-| CPPO | \|advantage\| completion 剪枝，训练加速（Phase1 ✅） |
+| 项目基线增强（B） | Difficulty-aware advantage + 自适应长度 reward（**默认开**） |
+| CPPO | \|advantage\| completion 剪枝，训练加速（Phase1 ✅；**默认开**） |
 | GFPO | Top-k 优势掩码，抑冗余推理 |
 | NGRPO | 负信号增强，缓解全错 group 无梯度 |
 | MO-GRPO 等 | 多目标公平 / 其它调研可嵌入方案（模块库扩展） |
+
+> **默认栈**：B + CPPO；加开其它策略时二者保持开启，除非显式关闭。详见 [`docs/MIXUP_MODULES.md`](./docs/MIXUP_MODULES.md)。
 
 详细计划见 **[schedule.md](./schedule.md)**。
 
 ## 项目状态
 
-🚧 **开发中** — **Phase 1–2 已完成**（CPPO 流程 + 默认档 C1）。当前节奏：**先完成整条项目流程与交付物**；正式训练延后，需要时经 **Phase 6 总控制台**（调用 Phase 4 选择器）按需开训。最终单一「M5 配方」暂不锁定。
+🚧 **开发中** — **Phase 1–3 已完成**（CPPO 流程 + 默认档 C1 + MixUp 模块库）。当前节奏：**先完成整条项目流程与交付物**；正式训练延后，需要时经 **Phase 6 总控制台**（调用 Phase 4 选择器）按需开训。最终单一「M5 配方」暂不锁定。
 
 - [x] 项目目录与文档（GitHub 骨架）
 - [x] 实验计划表（对齐 Drive 成功路径 + 共享链接）
-- [x] `doc/` 调研报告与 CPPO 论文
+- [x] `doc/` 调研报告与各方法原论文（CPPO/GFPO/NGRPO/MO-GRPO/…）
 - [x] `notebooks/phase1-cppo-g8.ipynb`（断点续训 + 进度条）
 - [x] `mixup/` CPPO 模块与 trainer patches
 - [x] Phase 1：A2 vs C2（g=8）效率对比 — 见 [`docs/PHASE1_REPORT.md`](./docs/PHASE1_REPORT.md)
 - [x] Phase 2：默认 C1（`configs/colab_c1.yaml`）+ 可覆盖加载（`mixup.config_loader`）+ [`docs/MEMORY_BENCHMARK_COLAB.md`](./docs/MEMORY_BENCHMARK_COLAB.md)
-- [ ] Phase 3：**MixUp 模块库**（尽量复现调研可嵌入方案，可扩展）
+- [x] Phase 3：**MixUp 模块库** — 见 [`docs/MIXUP_MODULES.md`](./docs/MIXUP_MODULES.md)；冒烟 `python -m mixup.tests_smoke`
 - [ ] Phase 4：**优化方案选择器**（能力交付；完整开训可延后）
 - [ ] Phase 5：**评测流水线**（四基准脚本/模板；实跑可延后）
 - [ ] Phase 6：**总控制台 Notebook** — 调参/选策略 → 基线训练与报告 → 优化方案训练与对比报告
@@ -204,16 +206,18 @@ MixUpLLaVA-Video-R1/
 │   └── README.md
 ├── doc/                      # 调研报告 + CPPO 论文 PDF
 ├── notebooks/                # Colab 实验 Notebook
-├── mixup/                    # 策略模块
+├── mixup/                    # 策略模块库（Phase 3）
+│   ├── config.py / registry.py / trainer_mixup.py
+│   ├── project_baseline.py / cppo.py / gfpo.py / ngrpo.py / mo_grpo.py
+│   ├── dagrpo.py / gmpo.py / mapo.py / grpo_a.py / step_grpo.py
+│   ├── presets/              # m1 / speed_cppo / m5 / m5q
 │   ├── config_loader.py      # 加载 yaml + Notebook 覆盖
-│   ├── cppo.py
-│   ├── registry.py
-│   ├── project_baseline.py
-│   └── patches/              # trainer 参考副本与应用说明
+│   └── patches/              # trainer 参考副本（含 *_mixup.py）
 ├── docs/                     # Phase 清单与实验报告
 │   ├── PHASE0_DRIVE_SYNC.md
 │   ├── PHASE1_REPORT.md      # Phase 1 A2/C2 报告
 │   ├── MEMORY_BENCHMARK_COLAB.md  # 换环境改参 + Phase1 吞吐
+│   ├── MIXUP_MODULES.md      # Phase 3 模块对照
 │   ├── ACCURACY_ORIENTED_OPTIONS.md  # 相对 M1 的准确率向备选配方
 │   └── phase1运行记录.ipynb  # 原始 cell 日志备份
 └── .gitignore

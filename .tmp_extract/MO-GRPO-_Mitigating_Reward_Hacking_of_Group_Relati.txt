@@ -1,0 +1,1897 @@
+MO-GRPO: Mitigating Reward Hacking of
+Group Relative Policy Optimization on Multi-Objective Problems
+Yuki Ichihara1 Yuu Jinnai2 Tetsuro Morimura2 Mitsuki Sakamoto2
+Ryota Mitsuhashi2 Eiji Uchibe3
+1Nara Institute of Science and Technology 2CyberAgent
+3Advanced Telecommunications Research Institute International
+Abstract
+Group Relative Policy Optimization
+(GRPO) has been shown to be an effective
+algorithm when an accurate reward model
+is available. However, such a highly
+reliable reward model is not available
+in many real-world tasks. In this paper,
+we particularly focus on multi-objective
+settings, in which we identify that GRPO is
+vulnerable to reward hacking, optimizing
+only one of the objectives at the cost
+of the others. To address this issue, we
+propose MO-GRPO, an extension of GRPO
+with a simple normalization method to
+reweight the reward functions automatically
+according to the variances of their values.
+We first show analytically that MO-GRPO
+ensures that all reward functions contribute
+evenly to the loss function while preserving
+the order of preferences, eliminating the
+need for manual tuning of the reward
+functions’ scales. Then, we evaluate MO-
+GRPO experimentally in four domains:
+(i) the multi-armed bandits problem, (ii)
+simulated control task (Mo-Gymnasium),
+(iii) machine translation tasks on the WMT
+benchmark (En-Ja, En-Zh), and (iv) instruc-
+tion following task. MO-GRPO achieves
+stable learning by evenly distributing
+correlations among the components of
+rewards, outperforming GRPO, showing
+MO-GRPO to be a promising algorithm
+for multi-objective reinforcement learning
+problems.
+1 Introduction
+Reward hackingis a phenomenon in which an
+agent overfits to a misspecified reward model, fail-
+ing to optimize for the true intended objective
+(Skalse et al., 2022; Gao et al., 2023; Rafailov
+et al., 2024). Recent work proposes Group Rela-
+tive Policy Optimization (GRPO; Shao et al. 2024;
+Liu et al. 2025) to enhance the reasoning capabil-
+ity of Large Language Models (LLMs; Liu et al.
+2024; Yang et al. 2025), demonstrating that the
+method can significantly improve the performance
+of the agent using a reward model with high ac-
+curacy. However, it is difficult to obtain high-
+accuracy reward models in many real-world tasks.
+In this work, we evaluate GRPO’s performance
+in a specific scenario where we only have access
+to under-specified reward models that do not accu-
+rately represent the task’s objective on their own.
+In particular, we study a practical scenario where
+we specify the intended behavior of the agent us-
+ing multiple reward models. The scenario involves
+a real-world machine translation task. The objec-
+tive is to generate texts that are both (1) consistent
+with the content in the original language and (2)
+easy to read in the target language.
+Our analysis shows that the loss function of the
+GRPO leads to optimizing the reward functions
+with higher variances while ignoring the lower
+ones, which may result in an undesirable policy.
+We empirically evaluate GRPO on multi-objective
+reinforcement learning problems, where we also
+observe reward hacking behavior of GRPO that it
+tends to ignore rewards with lower variances and
+only optimizes the ones with higher variances, re-
+sulting in an unintended behavior (e.g., hacking
+the readability objective while ignoring the trans-
+lation consistency; Table 1).
+To resolve this problem, we propose GRPO
+with a simple automated normalization method to
+the objectives, which we callMO-GRPO (Multi-
+Objective Group Relative Policy Optimization).
+MO-GRPO normalizes the advantage functions
+for each objective so that their variances are scaled
+evenly. This ensures that all reward functions con-
+tribute equally to updating the policy, regardless
+of their variance scales (Theorem 2). In this way,
+it prevents any objectives from being ignored in
+the training process, mitigating the reward hack-
+ing behavior of GRPO on multiple objectives.
+Our normalization technique maintains the origi-
+1
+arXiv:2509.22047v2  [cs.LG]  9 Jan 2026
+Instruction
+Translate the following English into easily readable
+Japanese.\nOver the past decade, our lives have changed
+through technology, with many working from home, ...
+jReadability↑BLEURT↑
+GRPO Over the past ten years, our lives have changed a lot be-
+cause of technology. ... 0.990.57
+MO-GRPO 過去の10年で、技術の進化により、多くの人が
+ホームワークから仕事をしているようになり...
+(Translation: In the past decade, technological advances
+have enabled many people to work from home work...)
+0.40 0.69
+Table 1: (Machine translation) Generation examples of GRPO and MO-GRPO by Llama (Llama-3.2-
+3B-Instruct).GRPO optimizes only the Japanese readability score (jReadability) by avoiding using
+difficult Japanese words, eventually stops using any Japanese characters, ignoring the translation
+accuracy score (BLEURT), resulting in generating non-Japanese text, which defeats the purpose of the
+translation. On the other hand, MO-GRPO evenly optimizes both objectives, achieving improvement on
+both objectives as intended. Generation examples from other LLMs and the results of outputs during
+training are shown in Appendix D.
+nal preference ordering under positive affine trans-
+formations of reward scales, even in cases where
+GRPO fails to preserve this ordering.
+We evaluate MO-GRPO experimentally on
+multi-armed bandit, simulated control (Felten
+et al., 2023), machine translation (Kocmi et al.,
+2024) problems, and instruction following task
+with multiple objectives. The result shows that
+MO-GRPO successfully mitigates reward hacking
+in the problem settings where GRPO incurs re-
+ward hacking (Table 1), resulting in a policy that
+is desirable for the given task.
+2 Related Works
+Reward hacking is one of the known problems
+in reinforcement learning (Amodei et al., 2016;
+Ziegler et al., 2020; Stiennon et al., 2020; Skalse
+et al., 2022; Gao et al., 2023). In the context of
+Large Language Models (LLMs), reward hacking
+often becomes a problem in the alignment pro-
+cess (Rafailov et al., 2024) where the LLMs are
+optimized to generate outputs that maximize the
+score of a reward model trained using human feed-
+back (e.g., RLHF; (Ziegler et al., 2020; Stiennon
+et al., 2020)). Prior work shows that if the re-
+ward model is inaccurate, the LLM can learn to
+generate sentences that increase the score from
+the reward model, even if it does not improve
+the true intended objective of the training. For
+example, it might produce outputs that are very
+long, overly polite, or stylistically pleasing to the
+reward model, even if they are factually incor-
+rect or unhelpful, because such attributes are spu-
+riously correlated with high reward scores (Gao
+et al., 2023). This over-optimization on a proxy
+reward can lead to a decrease in the true objec-
+tive and alignment of the model’s outputs (Pan
+et al., 2022; Gleave et al., 2020; Kim et al., 2025).
+There are several fine-tuning methods for multi-
+objective problems that can be used to solve this
+problem (Zhou et al., 2024; Li et al., 2025). How-
+ever, they face some problems. The problem of
+Zhou et al. (2024) is that, as the ratio of conflicts in
+the training data increase, the Pareto Fronts grad-
+ually move downwards, showing significant per-
+formance decreases. Li et al. (2025) can resolve
+this problem, but the proposed method involves
+response sampling, refinement, filtering, and fine-
+tuning, which could introduce computational over-
+head compared to simpler methods.
+3 Group Relative Policy Optimization
+(GRPO)
+GRPO is a reinforcement learning algorithm
+(Shao et al., 2024) which is usually used for online
+and on-policy learning. For a given state, a policy
+generates multiple outputs and learns to generate
+outputs with higher relative reward scores com-
+pared to the rest of the outputs.p Q is the distribu-
+tion over the initial state (prompt) (q∼p Q). The
+policyπ θ (· |q)outputs the action (sentence)o g
+based on the initial stateqfrom the action space.
+Formally, letR i be thei-th reward function, which
+is a mapping from a prompt-output pair to a scalar
+2
+value, and assume that there areKreward func-
+tions. For each promptq, GRPO samples a group
+of outputso={o 1, o2, ..., oG}from the old pol-
+icyπ θold and then optimizes the policy model by
+maximizing the following objective:
+J(π θ) =E
+" GX
+g=1
+1
+G
+1
+|og|
+πθ
+ 
+og |q
+
+πθold
+ 
+og |q
+ Ag
+#
+−βKL(π θ, πθref)(1)
+whereβis a hyperparameter, and KL is Kull-
+back–Leibler (KL) divergence. Since we omit
+symbols such as the thresholdϵandminopera-
+tion for simplicity, we note formal expressions in
+the Appendix B.
+Ag represents the normalized advantage value
+of the sentenceo g usingKreward models:
+Ag =
+PK
+i=1 Ri(q, og)−mean o
+ PK
+i=1 Ri(q,o)
+
+stdo
+ PK
+i=1 Ri(q,o)
+ .
+(2)
+The advantage valueA g is computed with-
+out normalizing the scale of the reward functions
+(Eq. 2). Consequently, when rewards differ in
+scale or variance, the advantage value can be dom-
+inated by the value from a high variance reward
+function.
+Theorem 1(Correlation between reward function
+and advantage function with GRPO).Assume the
+G→ ∞. The correlation coefficient between an
+individual reward functionR i and the advantage
+Ag is the ratio ofR i’s standard deviationσ i to the
+standard deviation of the total rewardσ.
+Corr(Ri(q, og), Ag) = σ2
+i +X
+σσi
+(3)
+whereX= P
+j̸=i Cov(Ri, Rj),Cov(·,·)is co-
+variance.
+The proof is in Appendix E.1.
+Theorem 1 shows that the advantage function
+in GRPO is more strongly correlated with reward
+components that exhibit higher variance. This
+shows that GRPO learns to optimize reward func-
+tions with higher variances than the lower ones
+and may lead to unintended behavior, which we
+show empirically in Section 5.
+4 Multi-Objective GRPO (MO-GRPO)
+To solve the problem that GRPO is affected by the
+scale of the variance of the reward functions, we
+propose Multi-Objective GRPO (MO-GRPO). By
+computing a separate advantage function for each
+reward, our framework adjusts for differences in
+reward variance and enables more stable learning.
+J(π θ) =E
+" GX
+g=1
+1
+G
+1
+|og|
+πθ
+ 
+og |q
+
+πθold
+ 
+og |q
+ AMO
+g
+#
+−βKL(π θ, πθref)(4)
+whereA MO
+g is defined as follows:
+AMO
+g =
+KX
+i=1
+Ri(q, og)−mean o
+ 
+Ri(q,o)
+
+stdo
+ 
+Ri(q,o)
+ .(5)
+Note thatMO-GRPO rescales the rewardin-
+dividually, then aggregating over the reward
+functions, whereasvanilla GRPO rescales it af-
+ter all the reward values are aggregated into a
+single value (Equation 2). Thus, MO-GRPO en-
+sures a consistent correlation between each advan-
+tage function and its corresponding reward func-
+tion.
+Theorem 2(Correlation between a reward func-
+tion and advantage function with MO-GRPO).As-
+sume that the number of samplesG→ ∞. The
+correlation of the advantage functionsA MO
+g with
+each reward functionR i for anyo g remains con-
+stant.
+Corr(Ri(q, og), AMO
+g ) = 1 +Z√
+K+Y (6)
+whereY= PK
+j=1
+P
+l̸=j
+Cov(Rl,Rj )
+σlσj
+andZ=
+P
+j̸=i
+Cov(Ri,Rj )
+σiσj
+,Cov(·,·)is covariance.
+The proof is in Appendix E.2.
+Theorem 2 shows that the advantage function in
+MO-GRPO is roughly equal to 1√
+K for every re-
+ward functionR i, with some effect of correlation
+between the reward functions. Specifically, if all
+the reward functions are uncorrelated with each
+other, then the correlation of the reward and the
+advantage is exactly 1√
+K for all the reward func-
+tions:
+Corollary 1(Correlation between a reward func-
+tion and advantage function with MO-GRPO un-
+der certain assumptions).Assume that theKre-
+ward functionsR i are mutually uncorrelated and
+the number of samplesG→ ∞. The correlation
+of the advantage functionsA MO
+g with each reward
+functionR i for anyo g remains constant.
+Corr(Ri(q, og), AMO
+g ) = 1√
+K
+(7)
+3
+2
+ 0 2
+R1 (std = 1)
+3
+2
+1
+0
+1
+2
+3
+R2 (std = 5)
+Advantage Function of GRPO
+Boundary (Advantage function = 0)
+2
+ 0 2
+R1 (std = 1)
+R2 (std = 5)
+Advantage Function of MO-GRPO
+Boundary (Advantage function = 0)
+2
+1
+0
+1
+2
+Advantage Function Value
+4
+3
+2
+1
+0
+1
+2
+3
+Advantage Function Value
+Figure 1: (Simulated experiment) Comparison of the advantage values of GRPO and MO-GRPO on a
+toy example with two reward functions with different sizes of variances (1and5). The advantage values
+of GRPO (left figure) are dominated by the high variation reward (R 2), indicating that the algorithm
+is sensitive to the relative scales of the rewards. In contrast, the advantage values of MO-GRPO (right
+figure) are invariant with the scale of the reward models, which shows that MO-GRPO is an easy-to-use
+algorithm for multi-objective learning tasks that does not require manual tuning of the reward models to
+avoid reward hacking.
+The proof follows immediately from Theorem
+2. The result shows that the reward functions of
+the MO-GRPO have roughly the same amount of
+influence on the policy update regardless of their
+variances. Thus, MO-GRPO does not ignore re-
+ward functions with lower variances, which could
+lead to unintended behavior. We show this prop-
+erty empirically in Section 5.
+Example.Here, we demonstrate how MO-
+GRPO preserves the sensitivity of each reward
+function within the advantage function. We con-
+sider two reward functions and three outputsR 1 :
+[0.1,0.5,0.9]andR 2 : [0.15,0.13,0.05]. A case
+of GRPO, reward mean is0.61and standard devia-
+tion is0.29, therefore, the advantage functions are
+[−1.38,0.43,0.95]. On the other hand a case of
+MO-GRPO, reward means are[0.5,0.11]and stan-
+dard deviation:[0.33,0.04], therefore advantage
+function are[−1.22+0.93,0.0+0.46,1.22−1.39].
+From this, it can be said that MO-GRPO success-
+fully reflects the superiority ofR2 in the advantage
+function. This can be demonstrated by the follow-
+ing Theorem 2.
+Simulated experiment.Figure 1 shows the
+comparison of the advantage functions of GRPO
+(Eq. 2) and MO-GRPO (Eq. 5) with two reward
+functions with low and high variances. The reward
+functions return a value sampled from a normal
+distributionR 1 ∼ N
+ 
+1,1 2
+andR 2 ∼ N
+ 
+1,5 2
+.
+The advantage value by GRPO is significantly in-
+fluenced byR 2 while the effect ofR1 is negligible.
+This motivates the agent to maximize the value
+ofR 2 even at the cost of losingR 1. Conversely,
+the advantage value calculated by MO-GRPO suc-
+cessfully considers both reward functions, even
+when their variances differ significantly. This in-
+dicates that, when using MO-GRPO, one does not
+need to manually adjust the scale of the reward
+models for a given task to prevent the agent from
+performing unbalanced optimization.
+Invariance to positive affine transformation.
+An additional advantage of MO-GRPO is its in-
+variance under positive affine transformations of
+reward functions.
+Proposition 1(Affine Invariance of MO-GRPO
+Advantage).Leto a ando b be two possible out-
+puts, and letR={R i}K
+i=1 be a set of reward func-
+tions. Consider a transformed setR ′ ={R ′
+i =
+aiRi +b i}K
+i=1 witha i >0. Then, the preference
+ordering induced by MO-GRPO is invariant under
+such positive affine transformations:
+AMO
+a ≥A MO
+b ⇐ ⇒AMO′
+a ≥A MO′
+b
+whereA MO′
+a = PK
+i=1
+R′
+i(q,oa)−mean o
+ 
+R′
+i(q,o)
+
+stdo
+ 
+R′
+i(q,o)
+ .
+The proof of Proposition 1 is in Appendix E.3.
+Meanwhile, Theorem 2 shows that MO-GRPO
+4
+0 1000 2000 3000 4000
+Steps
+0
+2
+4
+6Average Reward
+GRPO / MO-GRPO / Dr.GRPO Performance
+GRPO
+MO-GRPO
+Dr.GRPO
+Figure 2: (Multi-armed bandit) This figure illus-
+trates the average rewards obtained by the sum of
+the three reward functions: GRPO, MO-GRPO,
+and Dr. GRPO. As the figure shows, MO-GRPO
+finds a better policy faster than GRPO and Dr.
+GRPO.
+does not require engineering efforts to normalize
+the scale of the reward functionsrelativeto other
+reward functions, Proposition 1 shows that it does
+not need to normalize theabsolutescale of the re-
+ward functions. This makes MO-GRPO a prac-
+tically useful algorithm for real-world problems
+where the scale of the reward models is unclear
+(e.g., neural models) or instance-dependent. Con-
+versely, this property does not hold with GRPO.
+Proposition 2.The preference ordering induced
+by GRPO (and Dr .GRPO) is not invariant under
+positive affine transformations.
+The proof is in Appendix E.4.
+Summary.Unlike GRPO (Theorem 1), the ad-
+vantage function of MO-GRPO is built keeping
+the correlation with each reward function constant
+(Theorem 2). In addition, it is invariant with the
+rescaling of the reward functions with positive
+affine transformation (Proposition 1).
+These properties make MO-GRPO an easy-to-
+use algorithm. It can use off-the-shelf reward
+functions without requiring manual tuning of the
+reward values to fit them to target tasks.
+5 Experiment
+We conduct experiments on four tasks: (1) multi-
+armed bandit, (2) simulated control, (3) machine
+translation, and (4) instruction following task. We
+compare three methods: GRPO, Dr. GRPO, and
+MO-GRPO.
+0 1000 2000 3000 4000
+Steps
+1
+0
+1
+2
+3
+Average Reward
+Reward Function 1 (  = 10.0)
+GRPO
+MO-GRPO
+Dr.GRPO
+0 1000 2000 3000 4000
+Steps
+0.0
+0.5
+1.0
+1.5
+2.0Average Reward
+Reward Function 2 (  = 1.0)
+GRPO
+MO-GRPO
+Dr.GRPO
+0 1000 2000 3000 4000
+Steps
+0.0
+0.5
+1.0
+1.5
+2.0Average Reward
+Reward Function 3 (  = 0.1)
+GRPO
+MO-GRPO
+Dr.GRPO
+Figure 3: (Multi-arm bandit) Comparison of the
+three reward functions with varying variances (10,
+1, and0.1) obtained by GRPO, Dr. GRPO, and
+MO-GRPO. While GRPO and Dr. GRPO fail or
+are slow to learn the reward functions with lower
+variances (R 2 andR 3), MO-GRPO successfully
+optimizes all three reward functions regardless of
+the scale of the variances.
+5.1 Multi-Armed Bandit
+We first conduct experiments on a simple multi-
+armed bandit environment to observe the behavior
+of GRPO and MO-GRPO in a controlled environ-
+ment. We set the number of arms (actions)kto
+50, and there are three stochastic reward functions
+R1, R2, andR 3. The episode length is fixed to
+5000steps. The expected return of the armµ k
+is chosen at random from a normal distribution
+ofN(0,1)at the beginning of the episode and is
+5
+fixed throughout the episode. The three reward
+functions output the reward value ofµ k plus ad-
+ditional stochastic noise to it as follows:
+R1(k)∼ N(µk,10 2)
+R2(k)∼ N(µk,1 2)−0.1R 1(k)
+R3(k)∼ N(µk,0.1 2)
+R1(k)outputs a value sampled from a normal dis-
+tribution of meanµ k and standard deviation of10.
+R2(k)is a sum of a value sampled from a nor-
+mal distribution of meanµ k and standard devia-
+tion of1, minus the value of0.1×R 1. Thus,R 2
+is negatively correlated withR 1, making it harder
+to learn.R 3 is a value sampled from a normal
+distribution of meanµand standard deviation of
+0.1. These reward functions are designed to cre-
+ate a challenging optimization landscape where a
+high-variance reward function (R 1) could domi-
+nate the learning signal, potentially overshadow-
+ing the gradients from lower-variance and/or neg-
+atively correlated reward functions (R2 andR 3).
+We set the number of actions GRPO, Dr.
+GRPO, and MO-GRPO samplesGto8, and we
+use a neural network with3hidden layers for pol-
+icy. We conduct experiments with five different
+random seeds.
+Figure 2 shows the comparison of the three al-
+gorithms on the sum of the three reward functions.
+The result shows that MO-GRPO achieves a better
+policy faster than the others. Figure 3 shows the
+breakdown of the three reward functions, showing
+that GRPO and Dr. GRPO fail to learn low vari-
+ance reward functions (R 2 andR 3), resulting in
+suboptimal policies.
+The experimental result on a multi-armed ban-
+dit problem shows that MO-GRPO is a promis-
+ing approach for tasks where the reward functions
+have different scales of variance.
+5.2 Simulated Control
+To evaluate the method on a simulated
+control task, we utilize the MO-Reacher
+(mo-reacher-v5) control benchmark from
+themo_gymnasiumframework (Felten et al.,
+2023), as in Figure 4. In this task, a policy
+controls a two-joint robotic arm to simultaneously
+reach four distinct targets within 50 steps, which
+is an episode. The state is represented by a
+6-dimensional vector composed of thesinandcos
+of the two joint angles and their angular velocities,
+while the policy selects from a discrete action
+Figure 4: Simulated control task we use for the
+experiment. Two-joint arms with a 6-state vec-
+tor (sin,cosof joint angles and their angular ve-
+locities) select among 9 discrete actions to reach
+four targets within a 50-step episode. Each reward
+function is defined asR i = 1−4∥parm −p target,i∥2
+2.
+The optimal control in this environment is to keep
+swinging the arm at a constant speed.
+space of nine. The objective of the task is to max-
+imize the sum of the 4 reward functions, where
+each componentR i is a function of the squared
+Euclidean distance from the arm position to the
+target position:R i = 1−4·
+parm −p target,i
+2
+2.
+We conduct this experiment with five different
+random seeds.
+Table 2 shows the average total reward obtained
+per step. As can be seen, MO-GRPO can ob-
+tain a higher reward value per step than GRPO,
+demonstrating its effectiveness, even when applied
+to conventional reinforcement learning tasks. For
+a supplementary explanation, both methods show
+large values forR 1 andR 3 because GRPO and
+MO-GRPO learned policies that emphasized re-
+wards forR 1 andR 3 once each, while producing
+very negative values forR2 andR 4 out of five seed
+iterations. This can also be confirmed by looking
+at the standard deviations ofR 2 andR 4.
+In the ablation study, we modified the environ-
+ment by setting the standard deviation ofR 1 to 2.
+This verifies how MO-RPO behaves when encoun-
+tering reward functions with high variance.
+Table 3 shows the average reward values for
+each reward function per step with the standard de-
+viation ofR 1, set to 2. MO-GRPO has lower val-
+ues than GRPO forR 1 (high-standard-deviation
+reward function), but improves upon GRPO for
+the others. This suggests that, unlike GRPO, MO-
+GRPO can learn stably even when the standard de-
+viations of each reward function diverge. It can
+6
+Method Total Reward↑ Each Reward↑
+R1 R2 R3 R4
+GRPO1.29±0.24 0.39±0.11 0.24±0.15 0.44±0.08 0.20±0.17
+Dr. GRPO1.10±0.20 0.33±0.06 0.22±0.05 0.32±0.07 0.22±0.06
+MO-GRPO1.48±0.26 0.45±0.04 0.29±0.18 0.46±0.08 0.28±0.18
+Table 2: (Simulated control) MO-Reacher results. The total reward shows the sum of the four reward
+values (R1,R 2,R 3, andR 4) per step. The optimal policy achieves the total reward of around1.76.
+0 1000 2000 3000
+Training Steps
+0.6
+0.7
+0.8
+0.9
+Score 
+Training Process with GRPO
+BLEURT
+jReadability
+0 1000 2000 3000
+Training Steps
+0.04
+0.06
+0.08
+0.10
+0.12
+Standard Deviation
+Standard Deviation of Reward Functions with GRPO
+BLEURT
+jReadability
+Figure 5: (Machine translation) The training process of GRPO on the WMT En-Ja dataset uses BLEURT
+and jReadability as the reward functions by Sarashina (sarashina2.2-3b-instruct-v0.1). As the results
+show, GRPO overfits jReadability at the expense of BLEURT performance. As the results show, the
+standard deviation of jReadability is always more than BLEURT. As shown in Appendix K, the same
+phenomenon is observed in other LLMs.
+be seen that Dr. GRPO exhibits behavior similar
+to that of GRPO in this setting. The behavior of
+GRPO and MO-GRPO is shown in Appendix I.
+5.3 Machine Translation
+We evaluate the performance of MO-GRPO on
+machine translation with two objective functions,
+translation accuracy and readability. Readability is
+one of the important objectives in real-world text
+generation tasks (Hasebe and Lee, 2015; Trokhy-
+movych et al., 2024). It measures the accessibility
+of the text for a diverse audience, including chil-
+dren and non-native speakers, and is critical for
+communicating vital information during emergen-
+cies such as natural disasters.
+We conduct experiments on English to Japanese
+(En-Ja) and English to Chinese (En-Zh). We use
+the WMT-21, WMT-22, and WMT-23 datasets for
+training (Akhbardeh et al., 2021; Freitag et al.,
+2022, 2023), and evaluate on the WMT-24 test set
+(Kocmi et al., 2024).
+First, we perform the En-Ja translation
+task in WMT datasets using Sarashina
+(sarashina2.2-3b-instruct-v0.1),
+Qwen (Qwen2.5-3B-Instruct)
+(Yang et al., 2025), and Llama
+(Llama-3.2-3B-Instruct) (Grattafiori
+et al., 2024) as the base models. For the reward
+(objective) functions, we adopt (i) BLEURT (Sel-
+lam et al., 2020) and (ii) jReadability (Hasebe and
+Lee, 2015) to measure readability in Japanese.
+To evaluate the overall generation quality, we use
+LLM-as-a-Judge (Zheng et al., 2023) with GPT-
+4o-mini (GPT-Eval) so that both the translation
+accuracy and readability are considered.
+Table 4 shows that, compared to the base model
+score, GRPO achieved a high jReadability score
+but at the cost of degrading the BLEURT score.
+This result leads to the worst win rate score against
+the base model in three methods. In contrast, MO-
+GRPO almost successfully improved both metrics
+compared to the base model’s score, achieving
+in BLEURT and jReadability scores, preventing
+overfitting to jReadability, and MO-GRPO also
+achieves the highest win rate score. For supple-
+mentary, Dr. GRPO also shows higher values for
+7
+Method Total Reward↑ Each Reward↑
+R1 R2 R3 R4
+GRPO1.14±0.210.37±0.050.21±0.06 0.35±0.10 0.21±0.05
+Dr. GRPO1.10±0.16 0.35±0.02 0.20±0.07 0.34±0.09 0.21±0.04
+MO-GRPO1.40±0.250.36±0.090.33±0.05 0.40±0.05 0.30±0.07
+Table 3: (Simulated control) MO-Reacher by setting the standard deviation of only the first reward func-
+tionR 1 to 2 results. The total reward shows the sum of the four reward values (R1,R 2,R 3, andR 4) per
+step. The optimal policy achieves the total reward of around1.76.
+both metrics compared to the base model, but not
+as high as MO-GRPO with respect to GPT-Eval
+(Table 11).1
+In detail, MO-GRPO with Sarashina achieves
+BLEURT score of 0.69. For comparison,
+when Sarashina is trained with GRPO solely on
+BLEURT, the score reached 0.70. This close score
+suggests that MO-GRPO effectively learns to op-
+timize BLEURT without sacrificing other objec-
+tives. Furthermore, as shown in the output ex-
+amples (Table 10), GRPO exhibits behavior anal-
+ogous to reward hacking on jReadability; on the
+other hand, it is not observed with MO-GRPO, and
+the training process of MO-GRPO with Sarashina
+is shown in Figure 6, which suggests MO-GRPO
+avoids overfitting of jReadability and prevents
+degradation of BLEURT, unlike GRPO (Figure 5).
+Next, we examine the details of the results
+from other language models such as Qwen and
+Llama. The relatively limited improvement of
+MO-GRPO in Qwen’s experiments is likely at-
+tributable to Qwen not being a language model
+specialized for Japanese. However, Qwen outputs
+(Table 9) are also confirmed reward hacking be-
+havior from GRPO (such behavior is also not ob-
+served with MO-GRPO). Llama outputs (Table 1)
+show that GRPO engaged in reward hacking by
+outputting English text instead of a Japanese trans-
+lation, thereby improving the jReadability. This
+phenomenon again did not occur with MO-GRPO.
+As discussed in Appendix K, GRPO with Llama
+exhibits the strongest overfitting to jReadability,
+which can be explained by the higher variance of
+this metric under Llama.
+Second, we conduct En-Zh translation task in
+WMT datasets using Qwen and Llama as base
+1Dr. GRPO in this experiment is implemented using
+trl=0.16.1. This version of Dr. GRPO has no exclusions re-
+garding sentence length normalization, only in the form of
+removing the standard deviation of the advantage function.
+0 500 1000 1500 2000 2500 3000
+Training Steps
+0.60
+0.65
+0.70
+0.75Score 
+Training Process with MO-GRPO (Sarashina)
+BLEURT
+jReadability
+Figure 6: (Machine translation) The training pro-
+cess of MO-GRPO on the WMT En-Ja dataset
+uses BLEURT and jReadability as the reward
+functions by Sarashina. Unlike GRPO (Fig-
+ure 5), the figure shows MO-GRPO avoids over-
+fitting of jReadability and prevents deterioration
+of BLEURT. We also see stability in the results in
+other LLMs (Appendix K).
+models. For the reward functions, we adopt (i)
+BLEURT and (ii) TRank (Trokhymovych et al.,
+2024), which can evaluate the readability of text
+across multiple languages, including Chinese.
+Since TRank scores are higher for more difficult
+texts, multiply the score by−1in this experiment
+setting during the training (Table 4 shows the true
+TRank score, i.e., the score obtained without ap-
+plying the−1multiplication during evaluation.).
+As shown in Table 4, MO-GRPO also appropri-
+ately treats the two reward functions across Qwen
+and Llama, similar to the En-Ja task. There-
+fore, it consistently achieves higher GPT-Eval win
+rates than GRPO and Dr. GRPO. GPT-Eval in-
+dicates that GRPO and Dr. GRPO are improving
+with Qwen but exhibit clear reward hacking with
+Llama. Both methods overfit to TRank at the ex-
+pense of BLEURT. Interestingly, the trained mod-
+els output non-Chinese text even though the task is
+Chinese translation (similarly to what we observed
+in En-Ja translation task in Table 1).
+8
+WMT24 (En–Ja)
+Base Model Method BLEURT † ↑jReadability † ↑GPT-Eval ⋆ ↑
+Sarashina
+Base Model 0.66 0.70 50.0%
+GRPO 0.620.8666.0%
+Dr. GRPO 0.67 0.73 68.4%
+MO-GRPO (ours)0.690.7676.8%
+Qwen
+Base Model0.670.66 50.0%
+GRPO 0.650.7453.0%
+Dr. GRPO0.670.66 69.6%
+MO-GRPO (ours)0.670.6788.8%
+Llama
+Base Model 0.65 0.67 50.0%
+GRPO 0.600.9035.6%
+Dr. GRPO 0.63 0.77 42.6%
+MO-GRPO (ours)0.660.6968.8%
+WMT24 (En–Zh)
+Base Model Method BLEURT † ↑TRank † ↓GPT-Eval ⋆ ↑
+Qwen
+Base Model0.73-2.73 50.0%
+GRPO 0.71-3.2053.9%
+Dr. GRPO0.73-2.98 62.4%
+MO-GRPO (ours)0.73-2.8568.1%
+Llama
+Base Model 0.69 -2.44 50.0%
+GRPO 0.62-2.9833.2%
+Dr. GRPO 0.60 -3.15 28.3%
+MO-GRPO (ours)0.71-2.5571.7%
+Table 4: (Machine translation) Translation quality on WMT24 (higher is better). †BLEURT,jRead-
+ability, andTRankare training objectives and thus susceptible to over-fitting. ⋆GPT-Eval(against
+Base Model) is not optimized during training; we therefore regard it as theprimary metric. Across all
+three base models, our MO-GRPO improves GPT-Eval while avoiding excessive optimization of the
+training-objective metrics.
+Table 5 further quantifies this phenomenon: us-
+ing langdetect, 2. We find that GRPO and Dr.
+GRPO frequently produce non-Chinese genera-
+tions, exploiting TRank and this overly yields
+lower GPT-Eval scores than the base model.
+Ablation study.Instead of using MO-GRPO,
+one may solve the reward hacking by patching the
+reward function so that it cannot be hacked. We
+improve the TRank reward function by giving a
+huge penalty (score=10) if the generated output is
+identified as non-Chinese by langdetect. In this
+way, we can prevent the model to learn to gener-
+ate non-Chinese texts. Table 5 shows that adding
+a penalty to TRank reduces the probability of non-
+Chinese outputs (Non-Chinese) for all methods;
+MO-GRPO still has the lowest probability. Ad-
+ditionally, Table 6 shows the TRank with penal-
+2https://pypi.org/project/langdetect/
+ties under the same experimental settings as Ta-
+ble 4. This shows that MO-GRPO outperforms
+other methods in terms of GPT-Eval, and in this
+setting as well, GRPO and Dr. GRPO are trained
+with a focus on TRank penalties, which fluctuate
+more than BLEURT. This shows that MO-GRPO
+is on par with GRPO even if the reward functions
+are reasonably designed (e.g., problem settings in
+which GRPO achieves improvement).
+5.4 Instruction Following Task
+In this section, we conduct an experi-
+ment in AlpacaFarm (training dataset:
+tatsu-lab/alpaca, eval dataset:
+tatsu-lab/alpaca_eval) (Dubois et al.,
+2023) to evaluate the performance of MO-GRPO
+for the generic instruction following task using
+Qwen and Llama as base models. We use RM-
+Mistral-7B (Dong et al., 2023) and the Length
+9
+Method Non-Chinese(%)
+(w/o Penalty)↓
+Non-Chinese(%)
+(w/ Penalty)↓
+Base Model (Llama) 14.7% 14.7%
+GRPO 68.7% 1.2%
+Dr. GRPO 70.7% 1.2%
+MO-GRPO 5.6%0.6%
+Table 5: The probability of non-Chinese outputs
+(Non-Chinese) in machine translation. The ref-
+erence set contains 851 Chinese sentences (by
+langdetect).Non-Chinese= 1−#Chinese/851.
+w/o Penalty: TRank only.w/ Penalty: TRank
+with penalty for non-Chinese outputs. MO-GRPO
+consistently maintains proper outputs under both
+settings.
+Method BLEURT↑TRank w/ Penalty↓GPT-Eval↑
+Base Model 0.69 1.39 50%
+GRPO 0.70 -0.66 71.5%
+Dr. GRPO 0.70 -0.64 69.6%
+MO-GRPO 0.71 -0.4774.0%
+Table 6: (Machine translation) Translation quality
+on WMT24 En-Zh (higher is better) with Llama.
+TRank w/ Penaltypenalty non-Chinese outputs.
+MO-GRPO improves GPT-Eval while avoiding
+excessive optimization of the training-objective
+metrics.
+reward function. The Length reward function
+(RLen) gives a higher reward on the outputs closer
+to the length of the reference text so that it miti-
+gates the length bias problem (Shen et al., 2023;
+Singhal et al., 2024). Length reward function is
+defined as follows:
+RLen =
+
+
+
+L
+0.9Lref
+, L <0.9L ref,
+1,0.9L ref ≤L≤1.1L ref,
+1.1Lref
+L , L >1.1L ref.
+whereL ref is the reference text length,Lis the out-
+put text length. Given that RM-Mistral-7B tends
+to prefer longer outputs (Shen et al., 2023; Singhal
+et al., 2024), the Length reward function is an ad-
+versarial objective to it, making the optimization
+more challenging.
+Table 7 shows that GRPO and Dr. GRPO opti-
+mize RM-Mistral while decreasing the Length of
+both Llama and Qwen. In contrast, MO-GRPO
+attempts to maintain the values of both rewards.
+In such adversarial cases where both reward func-
+tions are important, the optimal behavior is to re-
+main close to the base model, such as MO-GRPO.
+AlpacaFarm
+Base Model Method RM-Mistral-7B↑Length↑
+Qwen
+Base Model 5.55 0.42
+GRPO 5.81 0.36
+Dr. GRPO 6.24 0.34
+MO-GRPO (ours) 5.51 0.44
+Llama
+Base Model 5.26 0.42
+GRPO 5.56 0.37
+Dr. GRPO 5.90 0.34
+MO-GRPO (ours) 5.28 0.42
+Table 7: (AlpacaFarm) Since RM-Mistral and
+Length have conflicting objectives, the correct an-
+swer here is to prevent it from being derived from
+the base model. GRPO and Dr. GRPO have
+learned to prioritize RM-Mistral, resulting in a sig-
+nificant sacrifice of Length, but MO-GRPO retains
+both reward functions almost entirely.
+6 Conclusion
+We conducted an investigation into the theoret-
+ical and empirical properties of handling multi-
+ple reward functions with GRPO. Our analysis re-
+vealed a previously unreported vulnerability. The
+advantage function of GRPO is biased toward re-
+ward functions with high variance. This makes
+the algorithm susceptible to reward-hacking be-
+haviors in multi-objective settings. To address this
+weakness, we proposed Multi-Objective GRPO
+(MO-GRPO), an extension of GRPO that uses
+a simple normalization method to automatically
+reweight reward functions according to their value
+variances. MO-GRPO treats each reward func-
+tion value equitably while preserving preference
+orderings under rescalings. Comprehensive ex-
+periments confirmed the practical benefits of this
+mechanism. We experimentally evaluate MO-
+GRPO in four domains: (i) the multi-armed ban-
+dits problem, (ii) the simulated control task (Mo-
+Gymnasium), (iii) machine translation tasks on
+the WMT benchmark (En-Ja, En-Zh), and (iv) in-
+struction following task. MO-GRPO consistently
+avoids reward hacking and shows improvements in
+task-specific metrics (e.g., BLEURT, jReadability)
+and learning stability.
+References
+Farhad Akhbardeh, Arkady Arkhangorodsky,
+Magdalena Biesialska, Ond ˇrej Bojar, Rajen
+Chatterjee, Vishrav Chaudhary, Marta R. Costa-
+jussa, Cristina España-Bonet, Angela Fan,
+10
+Christian Federmann, Markus Freitag, Yvette
+Graham, Roman Grundkiewicz, Barry Haddow,
+Leonie Harter, Kenneth Heafield, Christopher
+Homan, Matthias Huck, Kwabena Amponsah-
+Kaakyire, Jungo Kasai, Daniel Khashabi,
+Kevin Knight, Tom Kocmi, Philipp Koehn,
+Nicholas Lourie, Christof Monz, Makoto Mor-
+ishita, Masaaki Nagata, Ajay Nagesh, Toshiaki
+Nakazawa, Matteo Negri, Santanu Pal, Allah-
+sera Auguste Tapo, Marco Turchi, Valentin Vy-
+drin, and Marcos Zampieri. 2021. Findings of
+the 2021 Conference on Machine Translation
+(WMT21). InProceedings of the Sixth Con-
+ference on Machine Translation, pages 1–88,
+Online. Association for Computational Linguis-
+tics.
+Dario Amodei, Chris Olah, Jacob Steinhardt, Paul
+Christiano, John Schulman, and Dan Mané.
+2016. Concrete Problems in AI Safety.arXiv
+preprint arXiv:1606.06565.
+Hanze Dong, Wei Xiong, Deepanshu Goyal, Yi-
+han Zhang, Winnie Chow, Rui Pan, Shizhe
+Diao, Jipeng Zhang, KaShun SHUM, and Tong
+Zhang. 2023. RAFT: Reward ranked Finetun-
+ing for Generative Foundation Model Align-
+ment.Transactions on Machine Learning Re-
+search.
+Yann Dubois, Chen Xuechen Li, Rohan Taori,
+Tianyi Zhang, Ishaan Gulrajani, Jimmy Ba,
+Carlos Guestrin, Percy S Liang, and Tatsunori B
+Hashimoto. 2023. AlpacaFarm: A Simulation
+Framework for Methods that Learn from Hu-
+man Feedback. InAdvances in Neural Infor-
+mation Processing Systems, volume 36, pages
+30039–30069. Curran Associates, Inc.
+Florian Felten, Lucas N. Alegre, Ann Nowe, Ana
+Bazzan, El Ghazali Talbi, Grégoire Danoy, and
+Bruno C. da Silva. 2023. A toolkit for reliable
+benchmarking and research in multi-objective
+reinforcement learning. InAdvances in Neu-
+ral Information Processing Systems, volume 36,
+pages 23671–23700. Curran Associates, Inc.
+Xiao Feng, Bo Han, Zhanke Zhou, Jiaqi Fan,
+Jiangchao Yao, Ka Ho Li, Dahai Yu, and
+Michael Ng. 2025. DyPO: Dynamic Policy Op-
+timization for Multi-Turn Interactive Reason-
+ing. InICML 2025 Workshop on Programmatic
+Representations for Agent Learning.
+Markus Freitag, Nitika Mathur, Chi-kiu Lo, Eleft-
+herios Avramidis, Ricardo Rei, Brian Thomp-
+son, Tom Kocmi, Frederic Blain, Daniel
+Deutsch, Craig Stewart, Chrysoula Zerva,
+Sheila Castilho, Alon Lavie, and George Foster.
+2023. Results of WMT23 metrics shared task:
+Metrics might be guilty but references are not
+innocent. InProceedings of the Eighth Confer-
+ence on Machine Translation, pages 578–628,
+Singapore. Association for Computational Lin-
+guistics.
+Markus Freitag, Ricardo Rei, Nitika Mathur, Chi-
+kiu Lo, Craig Stewart, Eleftherios Avramidis,
+Tom Kocmi, George Foster, Alon Lavie, and
+André F. T. Martins. 2022. Results of WMT22
+metrics shared task: Stop using BLEU – neu-
+ral metrics are better and more robust. InPro-
+ceedings of the Seventh Conference on Machine
+Translation (WMT), pages 46–68, Abu Dhabi,
+United Arab Emirates (Hybrid). Association for
+Computational Linguistics.
+Leo Gao, John Schulman, and Jacob Hilton. 2023.
+Scaling Laws for Reward Model Overoptimiza-
+tion. InProceedings of the 40th International
+Conference on Machine Learning, volume 202
+ofProceedings of Machine Learning Research,
+pages 10835–10866. PMLR.
+Adam Gleave, Michael Dennis, Cody Wild, Neel
+Kant, Sergey Levine, and Stuart Russell. 2020.
+Adversarial policies: Attacking deep reinforce-
+ment learning. InInternational Conference on
+Learning Representations.
+Aaron Grattafiori, Abhimanyu Dubey, Abhinav
+Jauhri, Abhinav Pandey, Abhishek Kadian, Ah-
+mad Al-Dahle, Aiesha Letman, Akhil Mathur,
+Alan Schelten, Alex Vaughan, et al. 2024. The
+Llama 3 Herd of Models.arXiv preprint
+arXiv:2407.21783.
+Yoichiro Hasebe and Jae-Ho Lee. 2015. In-
+troducing a readability evaluation system for
+Japanese language education. InProceedings
+of the 6th international conference on com-
+puter assisted systems for teaching & learning
+Japanese, pages 19–22.
+Sunghwan Kim, Dongjin Kang, Taeyoon Kwon,
+Hyungjoo Chae, Dongha Lee, and Jinyoung
+Yeo. 2025. Rethinking Reward Model Eval-
+uation Through the Lens of Reward Overopti-
+11
+mization. InProceedings of the 63rd Annual
+Meeting of the Association for Computational
+Linguistics (Volume 1: Long Papers), pages
+13252–13280, Vienna, Austria. Association for
+Computational Linguistics.
+Tom Kocmi, Eleftherios Avramidis, Rachel Baw-
+den, Ond ˇrej Bojar, Anton Dvorkovich, Chris-
+tian Federmann, Mark Fishel, Markus Fre-
+itag, Thamme Gowda, Roman Grundkiewicz,
+Barry Haddow, Marzena Karpinska, Philipp
+Koehn, Benjamin Marie, Christof Monz, Ken-
+ton Murray, Masaaki Nagata, Martin Popel,
+Maja Popovi´c, Mariya Shmatova, Steinthór Ste-
+ingrímsson, and Vilém Zouhar. 2024. Find-
+ings of the WMT24 general machine translation
+shared task: The LLM era is here but MT is not
+solved yet. InProceedings of the Ninth Confer-
+ence on Machine Translation, pages 1–46, Mi-
+ami, Florida, USA. Association for Computa-
+tional Linguistics.
+Moxin Li, Yuantao Zhang, Wenjie Wang, Wen-
+tao Shi, Zhuo Liu, Fuli Feng, and Tat-Seng
+Chua. 2025. Self-Improvement Towards Pareto
+Optimality: Mitigating Preference Conflicts in
+Multi-Objective Alignment. InFindings of
+the Association for Computational Linguistics:
+ACL 2025, pages 11010–11031, Vienna, Aus-
+tria. Association for Computational Linguistics.
+Aixin Liu, Bei Feng, Bing Xue, Bingxuan Wang,
+Bochao Wu, Chengda Lu, Chenggang Zhao,
+Chengqi Deng, Chenyu Zhang, Chong Ruan,
+et al. 2024. Deepseek-v3 technical report.
+arXiv preprint arXiv:2412.19437.
+Zichen Liu, Changyu Chen, Wenjun Li, Penghui
+Qi, Tianyu Pang, Chao Du, Wee Sun Lee, and
+Min Lin. 2025. Understanding r1-zero-like
+training: A critical perspective.arXiv preprint
+arXiv:2503.20783.
+Alexander Pan, Kush Bhatia, and Jacob Stein-
+hardt. 2022. The effects of reward misspecifica-
+tion: Mapping and mitigating misaligned mod-
+els. InInternational Conference on Learning
+Representations.
+Rafael Rafailov, Yaswanth Chittepu, Ryan Park,
+Harshit Sikchi, Joey Hejna, W. Bradley Knox,
+Chelsea Finn, and Scott Niekum. 2024. Scaling
+laws for reward model overoptimization in di-
+rect alignment algorithms. InAdvances in Neu-
+ral Information Processing Systems, volume 37,
+pages 126207–126242. Curran Associates, Inc.
+Abhinav Rastogi, Albert Q Jiang, Andy Lo,
+Gabrielle Berrada, Guillaume Lample, Jason
+Rute, Joep Barmentlo, Karmesh Yadav, Kar-
+tik Khandelwal, Khyathi Raghavi Chandu,
+et al. 2025. Magistral.arXiv preprint
+arXiv:2506.10910.
+Thibault Sellam, Dipanjan Das, and Ankur Parikh.
+2020. BLEURT: Learning Robust Metrics for
+Text Generation. InProceedings of the 58th
+Annual Meeting of the Association for Compu-
+tational Linguistics, pages 7881–7892, Online.
+Association for Computational Linguistics.
+Zhihong Shao, Peiyi Wang, Qihao Zhu, Runxin
+Xu, Junxiao Song, Xiao Bi, Haowei Zhang,
+Mingchuan Zhang, YK Li, Y Wu, et al. 2024.
+Deepseekmath: Pushing the Limits of Mathe-
+matical Reasoning in Open Language Models.
+arXiv preprint arXiv:2402.03300.
+Wei Shen, Rui Zheng, Wenyu Zhan, Jun Zhao,
+Shihan Dou, Tao Gui, Qi Zhang, and Xuan-Jing
+Huang. 2023. Loose lips sink ships: Mitigating
+Length Bias in Reinforcement Learning from
+Human Feedback. InFindings of the Associ-
+ation for Computational Linguistics: EMNLP
+2023, pages 2859–2873.
+Prasann Singhal, Tanya Goyal, Jiacheng Xu, and
+Greg Durrett. 2024. A Long Way to Go: Inves-
+tigating Length Correlations in RLHF. InFirst
+Conference on Language Modeling.
+Joar Skalse, Nikolaus Howe, Dmitrii Krashenin-
+nikov, and David Krueger. 2022. Defining and
+Characterizing Reward Gaming. InAdvances
+in Neural Information Processing Systems, vol-
+ume 35, pages 9460–9471. Curran Associates,
+Inc.
+Nisan Stiennon, Long Ouyang, Jeffrey Wu, Daniel
+Ziegler, Ryan Lowe, Chelsea V oss, Alec Rad-
+ford, Dario Amodei, and Paul F Christiano.
+2020. Learning to summarize with human feed-
+back. InAdvances in Neural Information Pro-
+cessing Systems, volume 33, pages 3008–3021.
+Curran Associates, Inc.
+Mykola Trokhymovych, Indira Sen, and Martin
+Gerlach. 2024. An Open Multilingual Sys-
+tem for Scoring Readability of Wikipedia. In
+12
+Proceedings of the 62nd Annual Meeting of
+the Association for Computational Linguistics
+(Volume 1: Long Papers), pages 6296–6311,
+Bangkok, Thailand. Association for Computa-
+tional Linguistics.
+Changyi Xiao, Mengdi Zhang, and Yixin Cao.
+2025. BNPO: Beta Normalization Policy Op-
+timization.arXiv preprint arXiv:2506.02864.
+An Yang, Anfeng Li, Baosong Yang, Beichen
+Zhang, Binyuan Hui, Bo Zheng, Bowen Yu,
+Chang Gao, Chengen Huang, Chenxu Lv, et al.
+2025. Qwen3 technical report.arXiv preprint
+arXiv:2505.09388.
+Chujie Zheng, Shixuan Liu, Mingze Li, Xiong-
+Hui Chen, Bowen Yu, Chang Gao, Kai Dang,
+Yuqiong Liu, Rui Men, An Yang, Jingren
+Zhou, and Junyang Lin. 2025. Group Se-
+quence Policy Optimization.arXiv preprint
+arXiv:2507.18071.
+Lianmin Zheng, Wei-Lin Chiang, Ying Sheng,
+Siyuan Zhuang, Zhanghao Wu, Yonghao
+Zhuang, Zi Lin, Zhuohan Li, Dacheng Li, Eric
+Xing, Hao Zhang, Joseph E Gonzalez, and Ion
+Stoica. 2023. Judging LLM-as-a-Judge with
+MT-Bench and Chatbot Arena. InAdvances
+in Neural Information Processing Systems, vol-
+ume 36, pages 46595–46623. Curran Asso-
+ciates, Inc.
+Zhanhui Zhou, Jie Liu, Jing Shao, Xiangyu Yue,
+Chao Yang, Wanli Ouyang, and Yu Qiao.
+2024. Beyond One-Preference-Fits-All Align-
+ment: Multi-Objective Direct Preference Opti-
+mization. InFindings of the Association for
+Computational Linguistics: ACL 2024, pages
+10586–10613, Bangkok, Thailand. Association
+for Computational Linguistics.
+Daniel M. Ziegler, Nisan Stiennon, Jeffrey Wu,
+Tom B. Brown, Alec Radford, Dario Amodei,
+Paul Christiano, and Geoffrey Irving. 2020.
+Fine-tuning language models from human pref-
+erences.arXiv preprint arXiv:1909.08593.
+13
+A Related Work: Variants of GRPO
+Several algorithms have been proposed to im-
+prove GRPO. Xiao et al. (2025) uses adaptive re-
+ward normalization with a Beta distribution to im-
+prove training stability and precision, outperform-
+ing REINFORCE and GRPO in reasoning tasks,
+and it dynamically normalizes rewards, enhanc-
+ing policy optimization. In addition, LLMs have
+been developed that apply an improved method
+of GRPO that performs length normalization se-
+quentially and normalizes the advantage function
+batch by batch (Rastogi et al., 2025). Dynamic
+Policy Optimization (Feng et al., 2025) is an ex-
+tension of GRPO that enables large language mod-
+els to perform adaptive, multi-turn reasoning in
+dynamic environments. In experiments, DyPO
+outperformed existing methods consistently in in-
+teractive decision-making and reasoning. Zheng
+et al. (2025) proposed the new GRPO method to
+use sequence likelihood for importance sampling.
+Our contribution is distinct from these studies
+as we focus on low-resource settings where a re-
+liable reward model is not available. MO-GRPO
+is orthogonal to these ideas and can be combined
+with these algorithms.
+B Formal Formulation of GRPO
+The formal formulation of GRPO is as follows:
+JGRPO(θ) =E q,{og}∼πθref
+"
+1
+G
+GX
+g=1
+1
+|og| (8)
+min
+ 
+πθ(og |q)
+πθold(og |q) Ag,(9)
+clip
+
+1−ϵ,1 +ϵ, πθ(og |q)
+πθold(og |q)
+
+Ag
+!#
+(10)
+−βKL(π θ ∥π θref ).(11)
+whereϵis a threshold parameter.
+C Correlation Analysis of Dr. GRPO
+In Dr. GRPO, the advantage function is defined
+as:
+ADr
+g =
+KX
+i=1
+Ri(q, og)−mean o
+  KX
+i=1
+Ri(q,o)
+
+.
+(12)
+Theorem 3(Correlation each reward function and
+advantage function with Dr. GRPO).Assume that
+G→ ∞. The correlation coefficient between an
+individual reward functionR i and the advantage
+Ais the ratio of the standard deviation ofR i to the
+standard deviation of the total reward.
+Corr(Ri, ADr
+g ) =(13)
+σ2
+i +Xvuutσ2
+i
+ 
+KP
+j=1
+σ2
+j + P
+j̸=l
+P
+l̸=j
+Cov (Rj, Rl)
+! (14)
+whereX= P
+j̸=i Cov(Ri, Rj).
+Proof.From here on, for simplicity, we omit the
+notation for promptqand optional outputo g (e.g.,
+Ri(q, og)→R i). We assume the number of sam-
+plesG→ ∞, which allows the sample statistics to
+approximate the true population parameters. Let
+R1, . . . , Ri beKreward functions. We assume
+they are uncorrelated, such thatCov[R i, Rj] = 0
+for alli̸=j. Letµ i =E[R i]andσ 2
+i = Var[Ri]
+denote the mean and variance of thei-th reward,
+respectively.
+ADr :=R−µ, µ=E[R].(15)
+Cov(Ri, ADr) = Cov (Ri,R−E[R])(16)
+= Cov(Ri,R)(17)
+= Cov
+
+Ri,
+KX
+j=1
+Rj
+
+ (18)
+=
+KX
+j=1
+Cov(Ri, Rj)(19)
+=
+
+
+Cov(Ri, Ri) +
+X
+j̸=i
+Cov(Ri, Rj)
+| {z }
+X
+
+
+(20)
+= (Var[Ri] +X) =σ2
+i +X(21)
+The correlation coefficient between thei-th re-
+ward and the advantage is:
+Corr(Ri, ADr) = Cov
+ 
+Ri, ADr
+p
+Var [Ri] Var [ADr]
+(22)
+Finally, we can get the correlation between each
+reward function and advantage function with Dr.
+14
+GRPO.
+Corr(Ri, ADr) = Cov(Ri, ADr)p
+Var[Ri]) Var[ADr]
+(23)
+= σ2
+i +Xq
+σ2
+i ·Var[A Dr]
+(24)
+= σ2
+i +Xvuutσ2
+i
+ 
+KP
+j=1
+σ2
+j + P
+j̸=l
+P
+l̸=j
+Cov (Rj, Rl)
+! (25)
+If there is no correlation between rewards, the
+following applies:
+Corr(Ri, ADr) = σi
+σ (26)
+In other words, Dr. GRPO implies that learning is
+biased toward rewards with large variances.
+D Reward hacking Examples
+We show the results of the outputs during training
+(Table 8), and the other LLMs cause the reward
+hacking behavior (Table 9 and Table 10). In Ta-
+ble 9 and Table 10, it can be seen that both Qwen
+and Sarashina use more non-Japanese languages
+in GRPO to increase the jReadabillity score (re-
+ward hacking).
+E Proof of Theorem and Proposition
+E.1 Proof of Theorem 1
+From here on, for simplicity, we omit the nota-
+tion for promptqand optional outputo g (e.g.,
+Ri(q, og)→R i). We assume the number of sam-
+plesG→ ∞, which allows the sample statis-
+tics to approximate the true population parame-
+ters. LetR 1, . . . , Ri beKreward functions. Let
+µi =E[R i]andσ 2
+i = Var[Ri]denote the mean
+and variance of thei-th reward, respectively.
+Cov(Ri, A) = Cov
+
+Ri, R−E[R]
+σ
+
+(27)
+= 1
+σ Cov(Ri,R)(28)
+= 1
+σ Cov
+
+Ri,
+KX
+j=1
+Rj
+
+ (29)
+= 1
+σ
+KX
+j=1
+Cov(Ri, Rj)(30)
+= 1
+σ
+
+Cov(Ri, Ri) +
+X
+j̸=i
+Cov(Ri, Rj)
+
+ (31)
+= 1
+σ (Var[Ri] +X) =σ2
+i +X
+σ (32)
+Finally, we can get the correlation between
+each reward function and advantage function with
+GRPO.
+Corr(Ri, A) = Cov(Ri, A)p
+Var[Ri] Var[A]
+(33)
+=
+σ2
+i +X
+σq
+σ2
+i ·1
+(34)
+= σ2
+i +X
+σσi
+(35)
+The intuitive understanding of this proposition
+is that when a reward functionR i has a nega-
+tive correlation with other reward functions,Xbe-
+comes negative, thereby reducing the influence of
+Ri on the advantage function.
+E.2 Proof of Theorem 2
+From here on, for simplicity, we omit the nota-
+tion for promptqand optional outputo g (e.g.,
+Ri(q, og)→R i). We assume the number of sam-
+plesG→ ∞, which allows the sample statis-
+tics to approximate the true population parame-
+ters. LetR 1, . . . , Ri beKreward functions. Let
+µi =E[R i]andσ 2
+i = Var[Ri]denote the mean
+and variance of thei-th reward, respectively.
+AMO :=
+KX
+j=1
+Rj −mean
+ 
+Rj
+
+std(Rj
+ .(36)
+15
+Instruction
+Translate the following English into easily read-
+able Japanese.\nOver the past decade, our lives
+have changed through technology, with many work-
+ing from home, ...
+jReadability↑BLEURT↑
+GRPO ( 1
+10 T) 過去の10年で、技術の進化により、多くの人
+が家で働いており... 0.330.69
+GRPO ( 1
+3 T) Over the past ten years, our lives have changed a lot
+because of technology. ... 0.990.57
+GRPO (T) Over the past ten years, our lives have changed a lot
+because of technology. ... 0.940.57
+MO-GRPO (T)
+過去の10年で、技術の進化により、多くの人
+がホームワークから仕事をしているようにな
+り...
+0.40 0.69
+Table 8: (Machine translation) Generation examples of GRPO and MO-GRPO by Llama (Llama-3.2-3B-
+Instruct).Tis the total steps.GRPO optimizes only the Japanese readability score (jReadability) by
+avoiding using difficult Japanese words, eventually stops using any Japanese characters, ignoring
+the translation accuracy score (BLEURT), resulting in generating non-Japanese text, which defeats the
+purpose of the translation. On the other hand, MO-GRPO evenly optimizes both objectives, achieving
+improvement on both objectives as intended.
+We first calculateVar[AMO].
+Var
+ 
+AMO
+=
+KX
+j=1
+1 +
+X
+l̸=j
+Cov (Rl, Rj)
+σlσj
+(37)
+=K+
+KX
+j=1
+KX
+l̸=j
+Cov (Rl, Rj)
+σlσj
+| {z }
+Y
+(38)
+The corresponding correlation is:
+Corr(Ri, AMO) =
+Cov(Ri, PK
+j=1
+Rj −µj
+σj
+)
+σi
+√
+K+Y (39)
+=
+PK
+j=1
+1
+σj
+Cov (Ri, Rj)
+σi
+√
+K+Y (40)
+=
+σi
+P
+j=K
+Cov(Ri,Rj )
+σiσj
+σi
+√
+K+Y (41)
+=
+1 +P
+j̸=i
+Cov(Ri,Rj )
+σiσj
+√
+K+Y (42)
+= 1 +Z√
+K+Y (43)
+(44)
+E.3 Proof of Proposition 1
+For simplicity, we knowµ i andσ i, the true mean
+and standard deviation ofR i over a group of out-
+putso. The meanµ ′
+i and standard deviationσ ′
+i of
+the transformed rewardR ′
+i are:
+µ′
+i =E[a iRi +b i] =aiµi +b i
+σ′
+i = std(aiRi +b i) =aiσi (sincea i >0)
+Thei-th advantage function calculated using the
+transformed rewardR ′
+i for anyois:
+R′
+i(o)−µ ′
+i
+σ′
+i
+= (aiRi(o) +bi)−(a iµi +b i)
+aiσi
+(45)
+= ai(Ri(o)−µ i)
+aiσi
+(46)
+= Ri(o)−µ i
+σi
+(47)
+Since each advantage function is invariant, their
+sumA MO is also invariant.
+E.4 Proof of Proposition 2
+The advantage function of GRPO’s mean and
+standard deviation of rewards between groups re-
+mains unchanged, allowing us to focus on the
+value of the rewards. For simplicity, we consider
+two reward functions and two outputs,o a ando b.
+Assume a trade-off scenarioR 1(oa)> R 1(ob)
+andR 2(oa)< R 2(ob)andR 1(ob) +R 2(ob)<
+R1(oa) +R2(oa). We consider a scalingR ′ where
+16
+Method Output jReadability↑BLEURT↑
+Input
+"People Swimming in the Swimming Pool" from 2022
+is one Vicente Siso artwork that will display at Tierra
+del Sol Gallery beginning Jan. 13. (photo courtesy of
+Vicente Siso)
+– –
+GRPO
+"People Swimming in the Swimming Pool" 2022年は
+ビクセン・シソオーワークスがティラードール
+ギャラリーで1月13日から展示します。（ビクセ
+ン・シソオーフォト提供）
+1.00.68
+MO-GRPO
+2022年の「泳ぎの人たち」は、1月13日からティ
+ラードールギャラリーでVICENTE SISOの作品が
+展示されます。（VICENTE SISOの写真提供)
+0.86 0.77
+Table 9: Generation examples of GRPO and MO-GRPO overoptimizing for a single reward function
+(readability score) at the cost of the other (translation accuracy) with Qwen.GRPO exploits the prob-
+lem of the jReadability score that it significantly increases when non-Japanese characters are used,
+resulting in generating non-Japanese characters, which defeats the purpose of the translation task. On
+the other hand, MO-GRPO evenly optimizes both objectives, achieving improvement on both.
+R′
+i =a iRi (i.e.,b i = 0) and derive the condition
+under which the preference ordering is reversed:
+Aa > Ab
+⇒A ′
+a < A′
+b.
+whereA ′
+a =
+PK
+i=1 R′
+i(q,og)−mean
+ PK
+i=1 R′
+i(q,o)
+
+std
+ PK
+i=1 R′
+i(q,o)
+ .
+This reduces to:
+a1R1(ob) +a2R2(ob)> a1R1(oa) +a2R2(oa)
+(48)
+⇒ a2
+a1
+> R1(oa)−R 1(ob)
+R2(ob)−R 2(oa) (49)
+Sucha 1 anda 2 exist, so GRPO does not hold.
+F Experiment Settings in WMT
+Table 11 shows the prompt to evaluate on gpt-4o-
+mini, and Table 12 shows the parameter settings
+applied in the experiment.
+G Reproducibility Statement
+The experiments are conducted using an NVIDIA
+A100 GPU with 80 GB VRAM.
+All the code of the experiments will be open-
+sourced on publication. The datasets and models
+used in the experiments ar e publicly available (Ta-
+ble 13) except for GPT-4o-mini used for evalua-
+tion.
+H Supplementary Result
+We have shown cases where some reward func-
+tion is learned, but we will conduct supplemen-
+tary experiments to confirm whether the proposed
+method maintains the performance of GRPO when
+the reward function is not over-optimized.
+I Supplementry Results of
+mo-reacher-v5
+We show the results of GRPO (Figure 7) and MO-
+GRPO (Figure 8) in mo-reacher-v5.
+17
+Method Output jReadability↑BLEURT↑
+Input Siso’s depictions of land, water center new gallery ex-
+hibition – –
+GRPO
+「シスコが描いた土 地と水の新しい展覧会が
+ギャラリーで始まります」(This translation con-
+veys the main idea of the English text, focusing on
+the subject Siso (which could be a misspelling or a
+pseudonym for an artist like Claude Monet, known for
+his water lily paintings), the action depictions, and the
+new exhibition at a gallery, making it suitable for ele-
+mentary school children and easy to understand.)
+0.770.61
+MO-GRPO 「シスコの陸と海を描いた新しい展覧会」 0.57 0.77
+Table 10: Generation examples of GRPO and MO-GRPO overoptimizing for a single reward function
+(readability score) at the cost of the other (translation accuracy) with Sarashina.GRPO exploits the
+problem of the jReadability score that it significantly increases when non-Japanese characters are
+used, resulting in generating non-Japanese characters, which defeats the purpose of the translation task.
+On the other hand, MO-GRPO evenly optimizes both objectives, achieving improvement on both.
+J Practical Implementation
+1defMO_GRPO(reward_1,reward_2):
+2combined_scores = []
+3standard_deviation_reward_1 = np
+.std(reward_1) + 1e-6
+4standard_deviation_reward_2 = np.
+std(reward_2) + 1e-6
+5reward_1_norm = (reward_1 - np.
+mean(reward_1)) /
+standard_deviation_reward_1
+6reward_2_norm = (reward_2 - np.
+mean(reward_2)) /
+standard_deviation_reward_2
+7
+8foriin range(len(group_samples)
+):
+9combined_score = (
+10(reward_1_norm[i] +
+11reward_2_norm[i]) / np.
+sqrt(2)
+12)
+13combined_scores.append(
+combined_score)
+K Training Process of GRPO and
+MO-GRPO with BLEURT and
+jReadability
+We show the training process of MO-GRPO with
+BLEURT and jReadability by Llama and Qwen
+(Figure 9).
+We show the training process of GRPO with
+BLEURT and jReadability by Llama and Qwen
+(Figure 10 and Figure 11).
+18
+As a neutral reviewer, please evaluate
+the quality of the translations and
+simplification task from English
+to Japanese provided by two AI
+assistants for the following users’
+English texts. Follow the user’s
+instructions and select the assistant
+that provides the most appropriate
+response to user input. When
+evaluating, consider factors such
+as the accuracy of the response
+(similarity to the [Reference] text)
+and readability (easy to read for
+non-native Japanese speakers and a
+child). When starting the evaluation,
+compare the two responses and provide
+a brief explanation. Avoid bias
+and ensure that the order in which
+the responses are presented does not
+influence your judgment. Do not let
+the length of the response influence
+your evaluation. Do not favor the
+name of a specific AI assistant.
+Strive to be as objective as possible.
+After providing an explanation, output
+your final judgment in the following
+format: “[[A]]” if Assistant A is
+superior, “[[B]]” if Assistant B is
+superior, and “[[C]]” if it is a tie.
+(User Input)<input〉
+(Reference)〈reference〉
+Assistant A〈answer A〉
+Assistant B〈answer B〉
+Table 11: Prompt used for GPT-4o-mini-based
+evaluation.
+Parameter
+temperature 0.7
+learning rate 2e-6
+adam beta1 0.9
+adam beta2 0.99
+weight decay 0.1
+gradient accumulation steps 4
+num generations 8
+num train epochs 3
+beta 0.04
+Table 12: Parameter Setting of the Experiment in
+WMT for GRPO, Dr. GRPO, and MO-GRPO.
+Figure 7: This shows the results of GRPO in mo-
+reacher-v5. GRPO’s learned policy does not swing
+the reacher once, but rather stops in the right half,
+close to reward function 1R 1.
+19
+Name Reference
+WMT (Kocmi et al., 2024)https://github.com/wmt-conference
+BLEURT (Sellam et al., 2020)https://huggingface.co/lucadiliello/BLEURT-20
+Sarashina https://huggingface.co/sbintuitions/sarashina2.
+2-3b-instruct-v0.1
+Qwen (Yang et al., 2025)https://huggingface.co/Qwen/Qwen2.5-3B-Instruct
+Llama (Grattafiori et al., 2024) https://huggingface.co/meta-llama/Llama-3.
+2-3B-Instruct
+jReadability (Hasebe and Lee, 2015)https://github.com/joshdavham/jreadability
+Alapca (Dubois et al., 2023) https://huggingface.co/datasets/tatsu-lab/
+alpaca
+RM-Mistral-7B (Dong et al., 2023)https://huggingface.co/weqweasdas/RM-Mistral-7B
+TRank (Trokhymovych et al., 2024) https://huggingface.co/trokhymovych/TRank_
+readability
+Table 13: List of datasets and models used in the experiments.
+Method BLEURT↑jReadability↑
+GRPO 0.76 0.72
+MO-GRPO (ours) 0.76 0.72
+Table 14: Translation quality on WMT23 De-En,
+training dataset is WMT-21, 22.
+Method BLEURT↑jReadability↑
+GRPO 0.78 0.68
+MO-GRPO (ours) 0.78 0.70
+Table 15: Translation quality on WMT23 Ru-En,
+training dataset is WMT-21, 22.
+Figure 8: This shows the results of MO-GRPO in
+mo-reacher-v5. The policy learned by MO-GRPO
+successfully completes one swing of the reacher.
+20
+0 1000 2000 3000
+Training Steps
+0.60
+0.65
+0.70Score 
+Training Process with MO-GRPO (Llama)
+BLEURT
+jReadability
+0 500 1000 1500 2000 2500 3000
+Training Steps
+0.5
+0.6
+0.7Score 
+Training Process with MO-GRPO (Qwen)
+BLEURT
+jReadability
+Figure 9: (Machine translation) The training pro-
+cess of MO-GRPO on the WMT En-Ja dataset
+uses BLEURT and jReadability as the reward
+functions by Llama, and Qwen. Unlike GRPO
+(Figure 5, Figure 10, and Figure 11), the figure
+shows MO-GRPO avoids overfitting of jReadabil-
+ity and prevents deterioration of BLEURT in all
+language models.
+21
+0 1000 2000 3000
+Training Steps
+0.6
+0.7
+0.8
+0.9Score 
+Training Process with GRPO
+BLEURT
+jReadability
+0 1000 2000 3000
+Training Steps
+0.025
+0.050
+0.075
+0.100
+0.125
+0.150Standard Deviation
+Standard Deviation of Reward Functions with GRPO
+BLEURT
+jReadability
+Figure 10: The training process of GRPO on the WMT En-Ja dataset uses BLEURT and jReadability
+as the reward functions by Llama. As the results show, GRPO overfits jReadability at the expense of
+BLEURT performance. As the results show, the standard deviation of jReadability is always more than
+BLEURT.
+0 1000 2000 3000
+Training Steps
+0.6
+0.7
+0.8
+0.9Score 
+Training Process with GRPO
+BLEURT
+jReadability
+0 1000 2000 3000
+Training Steps
+0.02
+0.04
+0.06
+0.08
+0.10
+0.12Standard Deviation
+Standard Deviation of Reward Functions with GRPO
+BLEURT
+jReadability
+Figure 11: The training process of GRPO on the WMT En-Ja dataset uses BLEURT and jReadability
+as the reward functions by Qwen. As the results show, GRPO overfits jReadability at the expense of
+BLEURT performance. As the results show, the standard deviation of jReadability is always more than
+BLEURT.
+22

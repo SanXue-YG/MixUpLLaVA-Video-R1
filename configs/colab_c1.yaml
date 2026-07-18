@@ -51,12 +51,12 @@ deepspeed:
   offload_optimizer: none
   bf16_enabled: auto
 
-# --- MixUp 模块默认（策略开关；与档位超参分开记）---
-# Phase1 A2：cppo_pruning_rate=0；C2：0.5
+# --- MixUp 模块默认（B + CPPO 为项目默认，除非显式 false）---
+# Phase1 A2 对照：二者皆 false；C2：仅 cppo true（见 presets/speed_cppo / ablation_*）
 mixup:
-  project_baseline: false     # M1 默认 True；Phase1 对照时保持 false
-  cppo: false
-  cppo_pruning_rate: 0.5      # 启用 CPPO 时用；A2 对照请置 0
+  project_baseline: true      # 项目自研 B；默认开
+  cppo: true                  # 原定效率目标；默认开
+  cppo_pruning_rate: 0.5
   gfpo: false
   gfpo_top_k: 4
   ngrpo: false

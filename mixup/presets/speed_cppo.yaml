@@ -1,0 +1,7 @@
+# 消融 / Phase1 C2 风格：仅 CPPO（显式关闭 B）— 测纯加速时用
+project_baseline: false
+cppo: true
+cppo_pruning_rate: 0.5
+gfpo: false
+ngrpo: false
+mo_grpo: false

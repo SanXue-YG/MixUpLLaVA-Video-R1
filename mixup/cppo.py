@@ -1,14 +1,12 @@
 """CPPO: Completion Pruning Policy Optimization helpers.
 
-Paper: CPPO — Accelerating the Training of GRPO-Based Reasoning Models.
+Paper: ``doc/CPPO-Accelerating-GRPO-Reasoning-Models.pdf``
 Core idea: after computing group advantages, drop completions with the
 smallest |advantage|, then run policy/ref forward only on kept rows.
 
 Integration (Colab / Drive REPO):
-  1. Copy ``mixup/patches/tinyllava_trainer_reason_cppo.py`` over
-     ``{REPO}/tinyllava/train/tinyllava_trainer_reason.py``, OR
-  2. Call ``apply_completion_pruning`` from ``compute_loss`` after
-     advantages are computed (see patch file for full trainer).
+  1. Use MixUp trainer patch via ``mixup.trainer_mixup.apply_mixup_to_repo``, OR
+  2. Copy ``mixup/patches/tinyllava_trainer_reason_cppo.py`` / ``*_mixup.py``.
 
 ``pruning_rate=0`` → GRPO baseline (no prune).
 ``pruning_rate=0.5`` → drop ~50% lowest-|advantage| completions (keep ≥1).
@@ -18,8 +16,11 @@ from __future__ import annotations
 
 from typing import Any, Dict, Optional, Tuple, TYPE_CHECKING
 
+from .registry import register
+
 if TYPE_CHECKING:
     import torch
+    from .config import MixUpConfig
 
 
 def build_keep_mask(
@@ -52,12 +53,7 @@ def apply_completion_pruning(
     completion_mask: "torch.Tensor",
     pruning_rate: float,
 ) -> Tuple["torch.Tensor", Dict[str, Any], "torch.Tensor", "torch.Tensor", Optional["torch.Tensor"]]:
-    """Prune batch tensors by smallest |advantage|.
-
-    Returns:
-        advantages, prompt_inputs, combined_ids, completion_mask, keep_mask
-        (keep_mask is None if no pruning applied)
-    """
+    """Prune batch tensors by smallest |advantage|."""
     keep_mask = build_keep_mask(advantages, pruning_rate)
     if keep_mask.all():
         return advantages, prompt_inputs, combined_ids, completion_mask, None
@@ -77,3 +73,33 @@ def summarize_pruning(keep_mask: Optional["torch.Tensor"], pruning_rate: float) 
     kept = int(keep_mask.sum().item())
     total = int(keep_mask.numel())
     return f"cppo rate={pruning_rate}: keep {kept}/{total}"
+
+
+@register(
+    "cppo",
+    stage="prune",
+    priority="P0",
+    paper="doc/CPPO-Accelerating-GRPO-Reasoning-Models.pdf",
+    enabled_attr="cppo",
+)
+def apply(cfg: "MixUpConfig", ctx: Dict[str, Any]) -> Dict[str, Any]:
+    rate = cfg.cppo_pruning_rate if cfg.cppo else 0.0
+    advantages, prompt_inputs, combined_ids, completion_mask, keep_mask = apply_completion_pruning(
+        ctx["advantages"],
+        ctx.get("prompt_inputs") or {},
+        ctx["combined_ids"],
+        ctx["completion_mask"],
+        rate,
+    )
+    ctx["advantages"] = advantages
+    ctx["prompt_inputs"] = prompt_inputs
+    ctx["combined_ids"] = combined_ids
+    ctx["completion_mask"] = completion_mask
+    ctx["cppo_keep_mask"] = keep_mask
+    ctx["cppo_summary"] = summarize_pruning(keep_mask, rate)
+    if keep_mask is not None:
+        if "rewards" in ctx:
+            ctx["rewards"] = ctx["rewards"][keep_mask]
+        if "rewards_per_func" in ctx and ctx["rewards_per_func"] is not None:
+            ctx["rewards_per_func"] = ctx["rewards_per_func"][keep_mask]
+    return ctx

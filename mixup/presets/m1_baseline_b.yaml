@@ -1,0 +1,8 @@
+# M1 — 项目默认基线：B（自研）+ CPPO（原定效率目标）
+# 后续加开其它模块时，二者默认保留；仅显式 false 才关闭。
+project_baseline: true
+cppo: true
+cppo_pruning_rate: 0.5
+gfpo: false
+ngrpo: false
+mo_grpo: false

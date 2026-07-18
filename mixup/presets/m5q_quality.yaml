@@ -1,0 +1,8 @@
+# M5q quality-oriented: B + NGRPO + MO-GRPO (± CPPO)
+project_baseline: true
+cppo: true
+cppo_pruning_rate: 0.5
+gfpo: false
+ngrpo: true
+ngrpo_r_max: 2.0
+mo_grpo: true
