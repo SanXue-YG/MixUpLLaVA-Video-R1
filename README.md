@@ -15,18 +15,21 @@ Windows 本机原生 DeepSpeed 训练流程不稳定，**不作为正式训练�
 
 ## MixUp 优化思路
 
+将调研中的 GRPO 改进做成**可开关模块**（CPPO / GFPO / NGRPO / MO-GRPO / 项目基线 B 等），经 **选择器** 组合训练；Phase1 已用 CPPO 打通 Colab 流程，后续算法复用同一管道。推荐组合见 [`docs/ACCURACY_ORIENTED_OPTIONS.md`](./docs/ACCURACY_ORIENTED_OPTIONS.md)。
+
 | 模块 | 作用 |
 |------|------|
-| 项目基线增强 | Difficulty-aware advantage + 自适应长度 reward |
-| CPPO | 基于 \|advantage\| 的 completion 剪枝，训练加速 |
-| GFPO | Top-k 优势掩码，抑制冗余推理 |
+| 项目基线增强（B） | Difficulty-aware advantage + 自适应长度 reward（**M1 默认基线**） |
+| CPPO | \|advantage\| completion 剪枝，训练加速（Phase1 ✅） |
+| GFPO | Top-k 优势掩码，抑冗余推理 |
 | NGRPO | 负信号增强，缓解全错 group 无梯度 |
+| MO-GRPO 等 | 多目标公平 / 其它调研可嵌入方案（模块库扩展） |
 
-详细实验计划与里程碑见 **[schedule.md](./schedule.md)**。
+详细计划见 **[schedule.md](./schedule.md)**。
 
 ## 项目状态
 
-🚧 **开发中** — **Phase 1（CPPO g8）已完成**；后续锁定 C1 超参 → 模块化实现（不单训）→ **M1 基线 + M5 最终方案** → Phase 5 上游四基准。
+🚧 **开发中** — **Phase 1（CPPO g8）已完成并打通可复用训练流程**；后续：**模块库（Phase 3）→ 优化方案选择器 + M1 基线（Phase 4）→ 评测所选方案（Phase 5）**。最终单一「M5 配方」暂不锁定。
 
 - [x] 项目目录与文档（GitHub 骨架）
 - [x] 实验计划表（对齐 Drive 成功路径 + 共享链接）
@@ -34,19 +37,19 @@ Windows 本机原生 DeepSpeed 训练流程不稳定，**不作为正式训练�
 - [x] `notebooks/phase1-cppo-g8.ipynb`（断点续训 + 进度条）
 - [x] `mixup/` CPPO 模块与 trainer patches
 - [x] Phase 1：A2 vs C2（g=8）效率对比 — 见 [`docs/PHASE1_REPORT.md`](./docs/PHASE1_REPORT.md)
-- [ ] Phase 2：锁定 C1（与 Phase1 同参，复用 A2/C2 对照）
-- [ ] Phase 3：GFPO / NGRPO / 基线增强 **代码实现**（不单开训练评测）
-- [ ] Phase 4：训 **M1**（组内基线）+ **M5**（B+CPPO+NGRPO+GFPO 最终方案）
-- [ ] Phase 5：对 **M1 / M5** 跑 **Video-MME、MVBench、MLVU、MMVU**
+- [ ] Phase 2：默认 C1（=Phase1 已验证档）；其它部署环境可灵活改参
+- [ ] Phase 3：**MixUp 模块库**（尽量复现调研可嵌入方案，可扩展）
+- [ ] Phase 4：**优化方案选择器** + 默认基线 **M1（B）**；用户自选组合训练
+- [ ] Phase 5：对 **M1 + 所选组合** 跑 **Video-MME、MVBench、MLVU、MMVU**
 
 ### 评估口径（约定）
 
 | 阶段 | 用什么判断「好不好」 |
 |------|----------------------|
-| **训练 / Phase 1–4** | `reward`、`accuracy_reward`、`format_reward`、`loss`、`kl` + `train_runtime` / `steps_per_second`；可与 Phase1 A2/C2 并表 |
-| **Phase 5 总评估** | 按 [TinyLLaVA-Video-R1](https://github.com/ZhangXJ199/TinyLLaVA-Video-R1) 对 **M1 与 M5** 权重跑 **Video-MME、MVBench、MLVU、MMVU** |
+| **训练 / Phase 1–4** | `reward`、`accuracy_reward`、`format_reward`、`loss`、`kl` + 效率；可与 Phase1 A2/C2 并表 |
+| **Phase 5 总评估** | 对 **M1** 与 **当次所选开关组合** 跑上游四基准 |
 
-**后续训练对照结构（精简）**：不再做全矩阵消融；正式训练仅为 **M1** 与 **M5**（同 C1 档），中间组合 M2–M4 跳过。
+**开源主叙事**：可组合的 GRPO 优化实验台（Phase1 流程 + Phase3 模块 + Phase4 选择器）；推荐组合见 [`docs/ACCURACY_ORIENTED_OPTIONS.md`](./docs/ACCURACY_ORIENTED_OPTIONS.md)，非强制唯一终点。
 
 Phase 1 结论摘要：C2 相对 A2，runtime **约 −27%**、steps/s **约 +37%**（去存盘校正时长约 **−32%**）；训练 reward 未见下降。详见报告。
 
@@ -204,6 +207,7 @@ MixUpLLaVA-Video-R1/
 ├── docs/                     # Phase 清单与实验报告
 │   ├── PHASE0_DRIVE_SYNC.md
 │   ├── PHASE1_REPORT.md      # Phase 1 A2/C2 报告
+│   ├── ACCURACY_ORIENTED_OPTIONS.md  # 相对 M1 的准确率向备选配方
 │   └── phase1运行记录.ipynb  # 原始 cell 日志备份
 └── .gitignore
 ```
